@@ -1,20 +1,20 @@
 """
-Example Usage of SEC Filings Research Agent
+Example Usage of Investment Recommendation Agent
 
-This script demonstrates how to use the SEC Filings Research Agent to perform
-comprehensive research on SEC filings for equity research purposes.
+This script demonstrates how to use the Investment Recommendation Agent to get
+buy/hold/sell recommendations based on SEC filings analysis.
 
 Usage:
     python example_usage.py
 
-This will start an interactive session with the SEC Filings Research Agent where you can
-ask questions about companies' SEC filings and financial information.
+This will start an interactive session with the Investment Recommendation Agent where you can
+ask questions about companies' SEC filings and get investment recommendations.
 """
 
 import asyncio
 import os
 import dotenv
-from sec_filings_research_agent import create_sec_filings_research_agent, Runner, APP_NAME, USER_ID, SESSION_ID
+from investment_recommendation_agent import create_investment_recommendation_agent, Runner, APP_NAME, USER_ID, SESSION_ID
 from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from google.genai.types import UserContent
 from google.genai.errors import ClientError
@@ -42,27 +42,28 @@ if not os.environ.get("GOOGLE_API_KEY"):
 
 async def run_example():
     """
-    Run an interactive conversational session with the SEC Filings Research Agent.
+    Run an interactive conversational session with the Investment Recommendation Agent.
 
-    This function creates and runs the SEC Filings Research Agent, allowing you to
-    interact with it to research SEC filings for companies in a conversational manner.
+    This function creates and runs the Investment Recommendation Agent, allowing you to
+    interact with it to get investment recommendations based on SEC filings analysis.
     """
+    # No need for filing chunks dictionary anymore
     print("=" * 80)
-    print("SEC Filings Research Agent - Conversational Mode")
+    print("Investment Recommendation Agent - Conversational Mode")
     print("=" * 80)
-    print("This is an interactive session with the SEC Filings Research Agent.")
+    print("This is an interactive session with the Investment Recommendation Agent.")
     print("Try asking questions like:")
     print("  - What is the CIK number for Apple?")
     print("  - Find recent 10-K filings for Apple using its CIK")
-    print("  - Summarize the latest 10-K filing for Microsoft")
-    print("  - What are the key financial metrics in Tesla's most recent quarterly report?")
-    print("  - Find the CIK for Amazon, then get its recent filings, and summarize the latest one")
+    print("  - Analyze Apple's latest 10-K filing and provide a buy/hold/sell recommendation")
+    print("  - Should I buy, hold, or sell Tesla stock based on their most recent quarterly report?")
+    print("  - Find the CIK for Amazon, then get its recent filings, and give me a recommendation based on the latest one")
     print("\nType 'exit', 'quit', or 'bye' to end the conversation.")
     print("=" * 80)
 
     try:
         # Create the agent using the simplified function
-        agent = create_sec_filings_research_agent()
+        agent = create_investment_recommendation_agent()
 
         # Create a session service
         session_service = InMemorySessionService()
@@ -74,7 +75,7 @@ async def run_example():
             session_service=session_service
         )
 
-        # Create a session using the constants from sec_filings_research_agent
+        # Create a session using the constants from investment_recommendation_agent
         session = session_service.create_session(
             app_name=APP_NAME,
             user_id=USER_ID,
@@ -82,7 +83,7 @@ async def run_example():
         )
 
         # Display a welcome message from the agent
-        print("\nAgent: Hello! I'm the SEC Filings Research Agent. I can help you research SEC filings for companies using three tools: find_cik to find a company's CIK number, find_filings to locate recent SEC filings, and summarize_filing to extract and analyze filing content. How can I assist you today?")
+        print("\nAgent: Hello! I'm the Investment Recommendation Agent. My primary purpose is to provide BUY, HOLD, or SELL recommendations for stocks based on SEC filings analysis. I leverage the SEC Filings Research Agent to obtain comprehensive summaries of SEC filings, which I then analyze to provide investment recommendations. How can I assist you today?")
 
         # Start the conversation loop
         while True:
@@ -91,7 +92,7 @@ async def run_example():
 
             # Check if the user wants to exit
             if user_message.lower() in ["exit", "quit", "bye"]:
-                print("\nThank you for using the SEC Filings Research Agent. Goodbye!")
+                print("\nThank you for using the Investment Recommendation Agent. Goodbye!")
                 break
 
             # Create a new message from user input
@@ -148,7 +149,24 @@ async def run_example():
 
                                 # We don't need to print the raw function response
                                 # The model will summarize it in the next text response
-                                pass
+
+                                # For summarize_filing responses, provide a simple message
+                                func_response = part.function_response
+                                if func_response.name == "summarize_filing":
+                                    print("(Processing filing content...)", end="")
+
+                                    # Get the response data
+                                    response_data = func_response.response
+
+                                    # Print a message indicating that we've successfully extracted the filing content
+                                    if isinstance(response_data, str):
+                                        print(f" (Successfully extracted {len(response_data)} characters of filing content)", end="")
+
+                                        # Print a small preview of the content
+                                        summary_length = min(500, len(response_data))
+                                        print(f"\n\nFiling Summary (first {summary_length} characters):\n{response_data[:summary_length]}...\n", end="")
+                                    else:
+                                        print(f" (Response format not recognized: {type(response_data)})", end="")
 
                             # Handle image responses (warn and skip)
                             elif hasattr(part, 'inline_data') and part.inline_data:

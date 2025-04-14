@@ -18,6 +18,7 @@ import os
 import json
 import warnings
 from typing import List, Dict, Any, Optional
+import json
 
 # Filter the XMLParsedAsHTMLWarning
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
@@ -1170,7 +1171,7 @@ def extract_filing_information(filing_text: str, keywords: Optional[List[str]] =
 
     return extracted_info
 
-def summarize_filing(filing_url: str) -> str:
+def summarize_filing(filing_url: str, chunk_index: int = 0) -> str:
     """
     Extract and summarize the text content from an SEC filing.
 
@@ -1178,11 +1179,15 @@ def summarize_filing(filing_url: str) -> str:
     allowing the agent to use its own thought process to identify and highlight 
     the most important parts of the filing, including key metrics and insights.
 
+    IMPORTANT: This tool accesses the ACTUAL FILING CONTENT, not just the filing index.
+    All financial information MUST be obtained directly from SEC filings using this tool,
+    not from other sources. This tool should be called whenever financial data is needed.
+
     HOW TO USE THIS TOOL:
     1. First, find the filing URL using the find_filings tool
     2. Call this tool with the filing URL
-    3. The tool will extract the full text of the filing
-    4. YOU (the agent) should then analyze the text and identify important information:
+    3. The tool will extract the text of the filing and return it
+    4. YOU (the agent) should analyze the text and identify important information:
        - Key financial metrics (revenue, profit, margins, etc.)
        - Growth trends and year-over-year changes
        - Important business developments
@@ -1200,7 +1205,7 @@ def summarize_filing(filing_url: str) -> str:
     apple_filings = find_filings(apple_cik, "10-K", 1)
     filing_url = apple_filings[0]["link"]
 
-    # Extract and summarize the filing
+    # Extract the filing text
     filing_text = summarize_filing(filing_url)
 
     # Now YOU (the agent) should analyze the text and create a summary
@@ -1209,14 +1214,15 @@ def summarize_filing(filing_url: str) -> str:
 
     Args:
         filing_url (str): The URL of the SEC filing
+        chunk_index (int): Parameter kept for backward compatibility, not used
 
     Returns:
-        str: The full text content of the filing for the agent to analyze
+        str: The complete text content of the filing
     """
     # Extract the text content from the filing
     filing_text = extract_filing_text(filing_url)
 
-    # Return the full text content for the agent to analyze
+    # Return the complete filing text
     return filing_text
 
 def analyze_filing(filing_text: str, keywords: Optional[List[str]] = None) -> Dict[str, Any]:

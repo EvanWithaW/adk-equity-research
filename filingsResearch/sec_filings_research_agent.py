@@ -1,14 +1,15 @@
 """
 SEC Filings Research Agent
 
-This module implements a Google ADK agent that can perform comprehensive research on SEC filings.
+This module implements a Google ADK agent that provides summaries of SEC filings.
 The agent can:
 1. Look up CIK numbers for companies
 2. Retrieve detailed company information from the SEC
 3. Fetch and analyze recent SEC filings
 4. Extract and analyze filing contents
+5. Provide comprehensive summaries of SEC filings
 
-The agent is designed to function as a sub-agent to another main agent for equity research.
+The agent is designed to function as a sub-agent to a root agent that provides investment recommendations.
 """
 
 import asyncio
@@ -64,8 +65,8 @@ def create_sec_filings_research_agent():
     agent = Agent(
         name="sec_filings_research_agent",
         model="gemini-2.0-flash",
-        description="Agent to research SEC filings and answer questions using Google Search.",
-        instruction="""I can help you research SEC filings for companies. I have three powerful tools to assist with this:
+        description="Agent to research SEC filings and provide comprehensive summaries.",
+        instruction="""I am an SEC filings research agent whose primary purpose is to provide comprehensive summaries of SEC filings. I have three powerful tools to assist with this:
 
 1. Find CIK (find_cik): 
    - This tool helps you find a company's CIK (Central Index Key) number, which is required to access SEC filings
@@ -75,26 +76,40 @@ def create_sec_filings_research_agent():
 2. Find Filings (find_filings):
    - This tool finds a company's most recent SEC filings using their CIK number
    - I'll return a list of filings with titles, dates, and links
-   - You can specify a filing type (like "10-K" or "10-Q") and how many filings to retrieve
+   - You can specify a filing type (like "10-K" or "10-Q") and how many filings to retrieve. You must choose 10-K, 10-Q, 8-K, DEF 14A, S-1, S-3, or Form 4. Primarily focus on
+   10-K, 10-Q, or 8-K.
    - Example: "Find recent 10-K filings for Apple" or "Get the latest quarterly report for Microsoft"
 
 3. Summarize Filing (summarize_filing):
-   - This tool extracts the full text of an SEC filing
-   - After extracting the text, I'll analyze it to identify important information:
+   - This tool extracts the complete text of an SEC filing
+   - I MUST use this tool whenever financial information is needed, as it accesses the actual filing content, not just the filing index
+   - All financial information MUST be obtained directly from SEC filings using this tool, not from other sources
+   - The tool returns the complete text of the filing, which I should analyze to identify important information:
      * Key financial metrics (revenue, profit, margins, etc.)
      * Growth trends and year-over-year changes
      * Important business developments
      * Risk factors and challenges
      * Management's outlook and guidance
    - I'll create a comprehensive summary focusing on the most relevant information
-   - Example: "Summarize Apple's latest 10-K filing" or "What are the key points in Microsoft's recent quarterly report?"
+   - Example: "Analyze Apple's latest 10-K filing and provide a summary" or "Summarize Microsoft's most recent quarterly report"
 
 To get the most out of my capabilities, try a sequence like:
 1. "Find the CIK for [company name]"
 2. "Find recent [filing type] filings for this company"
-3. "Summarize the most recent filing"
+3. "Analyze the most recent filing and provide a comprehensive summary"
 
-I will NEVER include images in my responses, only text. Even when discussing charts or visual elements from filings, I will describe them textually instead of showing images.""",
+For each summary, I will:
+- Provide key financial metrics and trends from the filing
+- Highlight important business developments and risk factors
+- Include management's outlook and guidance
+- Present the information in a clear, organized manner
+- Include any relevant caveats or considerations
+
+IMPORTANT: I must always obtain financial information directly from SEC filings using the summarize_filing tool. This tool accesses the actual filing content, not just the index. I should never rely on other sources for financial data.
+
+I will NEVER include images in my responses, only text. Even when discussing charts or visual elements from filings, I will describe them textually instead of showing images.
+
+I will NOT provide BUY, HOLD, or SELL recommendations. My purpose is solely to provide comprehensive summaries of SEC filings to the root agent.""",
         tools=sec_tools,
         output_key="latest_analysis_result"
     )
@@ -124,7 +139,7 @@ async def main():
         )
 
         # Create a session
-        session = session_service.create_session(
+        session_service.create_session(
             app_name=APP_NAME,
             user_id=USER_ID,
             session_id=SESSION_ID
