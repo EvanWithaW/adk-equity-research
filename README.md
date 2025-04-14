@@ -1,10 +1,12 @@
 # ADK Equity Research Agent
 
-## Work In Progress by Evan Weidner
+## Developed by Evan Weidner
 
 ## Project Overview
 
 The ADK Equity Research Agent is a powerful tool built using Google's Agent Development Kit (ADK) that enables comprehensive research on SEC filings for equity research purposes. This agent serves as an intelligent assistant for financial analysts, investors, and researchers who need to quickly access, analyze, and extract insights from SEC filings.
+
+**Status**: This project is fully functional and has been tested. All features described in this README are implemented and working correctly.
 
 ## Key Features
 
@@ -12,7 +14,7 @@ The ADK Equity Research Agent is a powerful tool built using Google's Agent Deve
 - **SEC Filings Retrieval**: Fetch recent SEC filings (10-K, 10-Q, 8-K, etc.) for any publicly traded company.
 - **Document Scanning**: Scan filing documents to extract specific information, search for keywords, and analyze content.
 - **Text Extraction**: Extract and process the full text content from SEC filings.
-- **Content Analysis**: Analyze filing contents for specific keywords, patterns, or information.
+- **Content Analysis**: Extract and summarize key financial metrics, identify trends, and analyze filing contents with context-aware keyword searching.
 - **Web Search Integration**: Supplement SEC data with information from web searches for comprehensive research.
 - **Conversational Interface**: Interact with the agent using natural language to perform research tasks.
 
@@ -23,8 +25,8 @@ The agent uses the SEC's EDGAR database to access public company filings. It can
 1. Look up CIK numbers for companies using their name or ticker symbol
 2. Retrieve detailed company information from the SEC
 3. Fetch recent SEC filings of various types
-4. Extract and scan the text content from filings
-5. Analyze filing contents for specific keywords or information
+4. Extract and scan the text content from filings (specifically handling .htm format files)
+5. Analyze filing contents to extract key financial metrics, summarize important data points, identify growth trends, and provide context-rich keyword analysis
 6. Perform web searches to supplement SEC data
 
 ## Getting Started
