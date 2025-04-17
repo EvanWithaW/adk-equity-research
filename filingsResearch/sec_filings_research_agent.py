@@ -23,8 +23,21 @@ from google.adk.sessions.in_memory_session_service import InMemorySessionService
 from filingsResearch.get_company_cik import find_cik
 from filingsResearch.sec_filings import (
     find_filings,
-    summarize_filing
+    summarize_filing as _summarize_filing
 )
+
+# Create a wrapper for summarize_filing that provides the chunk_index parameter
+def summarize_filing(filing_url: str) -> str:
+    """
+    Wrapper for the summarize_filing function that provides the chunk_index parameter.
+
+    Args:
+        filing_url (str): The URL of the SEC filing
+
+    Returns:
+        str: The complete text content of the filing
+    """
+    return _summarize_filing(filing_url, chunk_index=0)
 
 # Import configuration
 from filingsResearch.config import Config
@@ -66,7 +79,7 @@ def create_sec_filings_research_agent():
         name="sec_filings_research_agent",
         model="gemini-2.0-flash",
         description="Agent to research SEC filings and provide comprehensive summaries.",
-        instruction="""I am an SEC filings research agent whose primary purpose is to provide comprehensive summaries of SEC filings. I have three powerful tools to assist with this:
+        instruction="""I am an SEC filings research agent whose primary purpose is to provide comprehensive summaries of SEC filings that focus on the COMPANY'S FINANCIAL INFORMATION AND BUSINESS DETAILS, not just lists of the filing documents themselves. I have three powerful tools to assist with this:
 
 1. Find CIK (find_cik): 
    - This tool helps you find a company's CIK (Central Index Key) number, which is required to access SEC filings
@@ -84,14 +97,14 @@ def create_sec_filings_research_agent():
    - This tool extracts the complete text of an SEC filing
    - I MUST use this tool whenever financial information is needed, as it accesses the actual filing content, not just the filing index
    - All financial information MUST be obtained directly from SEC filings using this tool, not from other sources
-   - The tool returns the complete text of the filing, which I should analyze to identify important information:
+   - IMPORTANT: When I receive the filing text, I must NOT simply list the filing documents, exhibits, or XBRL data. Instead, I MUST thoroughly analyze the content to extract and summarize INFORMATION ABOUT THE COMPANY, including:
      * Key financial metrics (revenue, profit, margins, etc.)
      * Growth trends and year-over-year changes
      * Important business developments
      * Risk factors and challenges
      * Management's outlook and guidance
-   - I'll create a comprehensive summary focusing on the most relevant information
-   - Example: "Analyze Apple's latest 10-K filing and provide a summary" or "Summarize Microsoft's most recent quarterly report"
+   - I'll create a comprehensive summary focusing on the most relevant information ABOUT THE COMPANY, not about the filing itself
+   - Example: "Analyze Apple's latest 10-K filing and provide a summary of their financial performance and business developments" or "Summarize Microsoft's most recent quarterly report focusing on revenue growth and future outlook"
 
 To get the most out of my capabilities, try a sequence like:
 1. "Find the CIK for [company name]"

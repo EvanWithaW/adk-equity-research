@@ -138,6 +138,16 @@ async def run_example():
                                         print(f"Finding the company's recent SEC filings...", end="")
                                     elif func_call.name == "summarize_filing":
                                         print(f"Extracting and analyzing the filing content...", end="")
+                                    elif func_call.name == "get_stock_price":
+                                        print(f"Retrieving current stock price...", end="")
+                                    elif func_call.name == "get_historical_data":
+                                        print(f"Retrieving historical stock data...", end="")
+                                    elif func_call.name == "calculate_technical_indicators":
+                                        print(f"Calculating technical indicators...", end="")
+                                    elif func_call.name == "get_company_info_from_yahoo":
+                                        print(f"Retrieving company information...", end="")
+                                    elif func_call.name == "get_market_news":
+                                        print(f"Retrieving market news...", end="")
                                     else:
                                         print(f"Processing your request...", end="")
                                     response_started = True

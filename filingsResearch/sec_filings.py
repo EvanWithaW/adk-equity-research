@@ -1171,7 +1171,7 @@ def extract_filing_information(filing_text: str, keywords: Optional[List[str]] =
 
     return extracted_info
 
-def summarize_filing(filing_url: str, chunk_index: int = 0) -> str:
+def summarize_filing(filing_url: str, chunk_index: int) -> str:
     """
     Extract and summarize the text content from an SEC filing.
 
