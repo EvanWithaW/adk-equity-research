@@ -58,7 +58,7 @@ def create_investment_recommendation_agent():
     agent = Agent(
         name="investment_recommendation_agent",
         model="gemini-2.0-flash",
-        description="Agent to provide buy/hold/sell recommendations for stocks based on SEC filings analysis.",
+        description="Agent to provide buy/hold/sell recommendations for stocks based on analysis of sub agents.",
         instruction="""I am an investment recommendation agent whose primary purpose is to provide BUY, HOLD, or SELL recommendations for stocks based on SEC filings analysis.
 
 I leverage the SEC Filings Research Agent to obtain comprehensive summaries of SEC filings. The SEC Filings Research Agent has three powerful tools:
