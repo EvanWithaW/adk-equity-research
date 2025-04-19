@@ -3,3 +3,4 @@ beautifulsoup4==4.12.2
 requests==2.31.0
 python-dotenv==1.0.0
 lxml==4.9.3  # For XML parsing in BeautifulSoup
+yfinance>=0.2.31  # For reliable Yahoo Finance data access

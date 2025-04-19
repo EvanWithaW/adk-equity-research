@@ -83,7 +83,7 @@ async def run_example():
         )
 
         # Display a welcome message from the agent
-        print("\nAgent: Hello! I'm the Investment Recommendation Agent. My primary purpose is to provide BUY, HOLD, or SELL recommendations for stocks based on SEC filings analysis. I leverage the SEC Filings Research Agent to obtain comprehensive summaries of SEC filings, which I then analyze to provide investment recommendations. How can I assist you today?")
+        print("\n[Investment-Recommendation-Agent]: Hello! I'm the Investment Recommendation Agent. My primary purpose is to provide BUY, HOLD, or SELL recommendations for stocks based on SEC filings analysis. I leverage the SEC Filings Research Agent to obtain comprehensive summaries of SEC filings, which I then analyze to provide investment recommendations. How can I assist you today?")
 
         # Start the conversation loop
         while True:
@@ -92,13 +92,13 @@ async def run_example():
 
             # Check if the user wants to exit
             if user_message.lower() in ["exit", "quit", "bye"]:
-                print("\nThank you for using the Investment Recommendation Agent. Goodbye!")
+                print("\n[Investment-Recommendation-Agent]: Thank you for using the Investment Recommendation Agent. Goodbye!")
                 break
 
             # Create a new message from user input
             new_message = UserContent(user_message)
 
-            print("\nAgent: ", end="")
+            print("\n[Investment-Recommendation-Agent]: ", end="")
             # Track if we've started printing the response
             response_started = False
 
@@ -106,7 +106,7 @@ async def run_example():
             fallback_message = None
             # Set a helpful fallback message based on the user's request
             if "summarize" in user_message.lower() and "filing" in user_message.lower():
-                fallback_message = "I'm having trouble summarizing the filing. Please make sure you've provided a valid filing URL or try finding the filing first using the find_filings tool."
+                fallback_message = "[SEC-Filings-Research-Agent]: I'm having trouble summarizing the filing. Please make sure you've provided a valid filing URL or try finding the filing first using the find_filings tool."
 
             # Run the agent with the required parameters
             try:
@@ -132,14 +132,27 @@ async def run_example():
                                 func_call = part.function_call
                                 if not response_started:
                                     # Provide specific messages based on the function being called
+                                    # SEC Filings Research Agent functions
                                     if func_call.name == "find_cik":
-                                        print(f"Searching for the company's CIK number...", end="")
+                                        print(f"[SEC-Filings-Research-Agent]: Searching for the company's CIK number...", end="")
                                     elif func_call.name == "find_filings":
-                                        print(f"Finding the company's recent SEC filings...", end="")
+                                        print(f"[SEC-Filings-Research-Agent]: Finding the company's recent SEC filings...", end="")
                                     elif func_call.name == "summarize_filing":
-                                        print(f"Extracting and analyzing the filing content...", end="")
+                                        print(f"[SEC-Filings-Research-Agent]: Extracting and analyzing the filing content...", end="")
+                                    # Market Data Agent functions
+                                    elif func_call.name == "get_stock_price":
+                                        print(f"[Market-Data-Agent]: Retrieving current stock price...", end="")
+                                    elif func_call.name == "get_historical_data":
+                                        print(f"[Market-Data-Agent]: Retrieving historical stock data...", end="")
+                                    elif func_call.name == "calculate_technical_indicators":
+                                        print(f"[Market-Data-Agent]: Calculating technical indicators...", end="")
+                                    elif func_call.name == "get_company_info_from_yahoo":
+                                        print(f"[Market-Data-Agent]: Retrieving company information...", end="")
+                                    elif func_call.name == "get_market_news":
+                                        print(f"[Market-Data-Agent]: Retrieving market news...", end="")
+                                    # Default for any other functions
                                     else:
-                                        print(f"Processing your request...", end="")
+                                        print(f"[Investment-Recommendation-Agent]: Processing your request...", end="")
                                     response_started = True
 
                             # Handle function responses (don't display raw responses)
@@ -153,37 +166,37 @@ async def run_example():
                                 # For summarize_filing responses, provide a simple message
                                 func_response = part.function_response
                                 if func_response.name == "summarize_filing":
-                                    print("(Processing filing content...)", end="")
+                                    print("[SEC-Filings-Research-Agent]: (Processing filing content...)", end="")
 
                                     # Get the response data
                                     response_data = func_response.response
 
                                     # Print a message indicating that we've successfully extracted the filing content
                                     if isinstance(response_data, str):
-                                        print(f" (Successfully extracted {len(response_data)} characters of filing content)", end="")
+                                        print(f" [SEC-Filings-Research-Agent]: (Successfully extracted {len(response_data)} characters of filing content)", end="")
 
                                         # Print a small preview of the content
                                         summary_length = min(500, len(response_data))
-                                        print(f"\n\nFiling Summary (first {summary_length} characters):\n{response_data[:summary_length]}...\n", end="")
+                                        print(f"\n\n[SEC-Filings-Research-Agent]: Filing Summary (first {summary_length} characters):\n{response_data[:summary_length]}...\n", end="")
                                     else:
-                                        print(f" (Response format not recognized: {type(response_data)})", end="")
+                                        print(f" [SEC-Filings-Research-Agent]: (Response format not recognized: {type(response_data)})", end="")
 
                             # Handle image responses (warn and skip)
                             elif hasattr(part, 'inline_data') and part.inline_data:
                                 # Skip images and warn the user
                                 if not response_started:
-                                    print("Warning: The agent tried to include an image in the response, but images are not supported. Displaying text only.", end="")
+                                    print("[Investment-Recommendation-Agent]: Warning: The agent tried to include an image in the response, but images are not supported. Displaying text only.", end="")
                                     response_started = True
                                 else:
-                                    print(" (Image removed - text only mode)", end="")
+                                    print(" [Investment-Recommendation-Agent]: (Image removed - text only mode)", end="")
             except ClientError as e:
                 # Check if this is the empty text parameter error
                 if "empty text parameter" in str(e):
                     # Use the fallback message if available, otherwise provide a generic error message
                     if fallback_message:
-                        print(fallback_message, end="")
+                        print(f"[Investment-Recommendation-Agent]: {fallback_message}", end="")
                     else:
-                        print("I'm having trouble generating a response. Please try a different question or rephrase your request.", end="")
+                        print("[Investment-Recommendation-Agent]: I'm having trouble generating a response. Please try a different question or rephrase your request.", end="")
                     response_started = True
                 else:
                     # Re-raise other ClientErrors to be handled by the outer try-except block
@@ -192,9 +205,9 @@ async def run_example():
             # Add a newline after the agent's response
             if not response_started:
                 if fallback_message:
-                    print(fallback_message)
+                    print(f"[Investment-Recommendation-Agent]: {fallback_message}")
                 else:
-                    print("(No response)")
+                    print("[Investment-Recommendation-Agent]: (No response)")
             else:
                 print()
 
