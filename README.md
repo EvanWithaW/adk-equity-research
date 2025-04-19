@@ -6,8 +6,6 @@
 
 The ADK Equity Research Agent is a powerful tool built using Google's Agent Development Kit (ADK) that enables comprehensive research on SEC filings for equity research purposes. This agent serves as an intelligent assistant for financial analysts, investors, and researchers who need to quickly access, analyze, and extract insights from SEC filings.
 
-**Status**: This project is fully functional and has been tested. All features described in this README are implemented and working correctly.
-
 ## Key Features
 
 - **Company Information Lookup**: Find CIK (Central Index Key) numbers for companies and retrieve detailed company information from the SEC's EDGAR database.
