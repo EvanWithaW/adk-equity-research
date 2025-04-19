@@ -27,18 +27,24 @@ from filingsResearch.sec_filings import (
 )
 
 
-# Create a wrapper for summarize_filing that provides the chunk_index parameter
-def summarize_filing(filing_url: str) -> str:
+# Create a wrapper for summarize_filing that handles chunking
+def summarize_filing(filing_url: str, chunk_index: int = 0, max_chunk_size: int = 200000) -> str:
     """
-    Wrapper for the summarize_filing function that provides the chunk_index parameter.
+    Wrapper for the summarize_filing function that handles chunking of large filings.
+
+    This function retrieves a specific chunk of a filing to prevent hitting token limits.
+    Use chunk_index=-1 to get information about the total number of chunks available.
 
     Args:
         filing_url (str): The URL of the SEC filing
+        chunk_index (int, optional): Index of the chunk to return (0-based). 
+                                    Use -1 to get information about total chunks. Defaults to 0.
+        max_chunk_size (int, optional): Maximum size of each chunk in characters. Defaults to 200000.
 
     Returns:
-        str: The complete text content of the filing
+        str: A chunk of the filing text, or information about the total number of chunks
     """
-    return _summarize_filing(filing_url, chunk_index=0)
+    return _summarize_filing(filing_url, chunk_index=chunk_index, max_chunk_size=max_chunk_size)
 
 # Import configuration
 from filingsResearch.config import Config
@@ -95,9 +101,13 @@ def create_sec_filings_research_agent():
    - Example: "Find recent 10-K filings for Apple" or "Get the latest quarterly report for Microsoft"
 
 3. Summarize Filing (summarize_filing):
-   - This tool extracts the complete text of an SEC filing
+   - This tool extracts the text of an SEC filing in manageable chunks to prevent hitting token limits
    - I MUST use this tool whenever financial information is needed, as it accesses the actual filing content, not just the filing index
    - All financial information MUST be obtained directly from SEC filings using this tool, not from other sources
+   - For large filings, I should:
+     * First call summarize_filing with chunk_index=-1 to get information about the total number of chunks
+     * Then request each chunk individually by calling summarize_filing with chunk_index=0, 1, 2, etc.
+     * Process each chunk before requesting the next one to avoid hitting token limits
    - IMPORTANT: When I receive the filing text, I must NOT simply list the filing documents, exhibits, or XBRL data. Instead, I MUST thoroughly analyze the content to extract and summarize INFORMATION ABOUT THE COMPANY, including:
      * Key financial metrics (revenue, profit, margins, etc.)
      * Growth trends and year-over-year changes

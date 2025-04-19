@@ -17,7 +17,9 @@ import re
 import os
 import json
 import warnings
-from typing import List, Dict, Any, Optional
+import time
+import random
+from typing import List, Dict, Any, Optional, Callable
 import json
 
 # Filter the XMLParsedAsHTMLWarning
@@ -25,6 +27,86 @@ warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 # Import the existing find_cik function
 from filingsResearch.get_company_cik import find_cik
+
+def retry_with_backoff(max_retries: int = 5, initial_delay: float = 1.0, 
+                      backoff_factor: float = 2.0, jitter: bool = True,
+                      retry_on: Callable[[Exception], bool] = None) -> Callable:
+    """
+    Retry decorator with exponential backoff for handling rate limits and transient errors.
+
+    Args:
+        max_retries (int): Maximum number of retries before giving up
+        initial_delay (float): Initial delay in seconds
+        backoff_factor (float): Factor to multiply delay by after each retry
+        jitter (bool): Whether to add random jitter to the delay
+        retry_on (Callable): Function that takes an exception and returns True if it should be retried
+
+    Returns:
+        Callable: Decorator function
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            last_exception = None
+
+            for retry in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+
+                    # Check if we should retry this exception
+                    if retry_on and not retry_on(e):
+                        raise
+
+                    # Check if we've reached the maximum number of retries
+                    if retry >= max_retries:
+                        raise
+
+                    # Calculate delay with optional jitter
+                    if jitter:
+                        actual_delay = delay * (1 + random.random() * 0.1)
+                    else:
+                        actual_delay = delay
+
+                    print(f"Request failed with error: {str(e)}. Retrying in {actual_delay:.2f} seconds...")
+                    time.sleep(actual_delay)
+
+                    # Increase delay for next retry
+                    delay *= backoff_factor
+
+            # This should never be reached, but just in case
+            raise last_exception
+
+        return wrapper
+
+    return decorator
+
+def should_retry_request(exception: Exception) -> bool:
+    """
+    Determine if a request should be retried based on the exception.
+
+    Args:
+        exception (Exception): The exception that was raised
+
+    Returns:
+        bool: True if the request should be retried, False otherwise
+    """
+    # Retry on connection errors, timeouts, and rate limits (429)
+    if isinstance(exception, requests.exceptions.RequestException):
+        if isinstance(exception, requests.exceptions.ConnectionError):
+            return True
+        if isinstance(exception, requests.exceptions.Timeout):
+            return True
+        if isinstance(exception, requests.exceptions.HTTPError):
+            # Retry on 429 (Too Many Requests) and 5xx errors
+            if hasattr(exception, 'response') and exception.response is not None:
+                if exception.response.status_code == 429:
+                    return True
+                if 500 <= exception.response.status_code < 600:
+                    return True
+
+    return False
 
 def get_company_info(cik: str) -> Dict[str, Any]:
     """
@@ -47,12 +129,11 @@ def get_company_info(cik: str) -> Dict[str, Any]:
         'User-Agent': 'Educational Project Evan Weidner hi@evanweidner.com'
     }
 
-    # Make the GET request
-    response = requests.get(url, headers=headers)
-
-    # Check if the request was successful
-    if response.status_code != 200:
-        return {"error": f"Failed to retrieve company information. Status code: {response.status_code}"}
+    # Make the GET request with retry logic
+    try:
+        response = make_request(url, headers)
+    except Exception as e:
+        return {"error": f"Failed to retrieve company information: {str(e)}"}
 
     # Parse the JSON response
     try:
@@ -61,7 +142,7 @@ def get_company_info(cik: str) -> Dict[str, Any]:
     except json.JSONDecodeError:
         return {"error": "Failed to parse company information JSON"}
 
-def find_filings(cik: str, filing_type: Optional[str] = None, count: int = 5) -> List[Dict[str, Any]]:
+def find_filings(cik: str, filing_type: Optional[str], count: int) -> List[Dict[str, Any]]:
     """
     Find the company's most recent filings from the CIK.
 
@@ -113,13 +194,12 @@ def find_filings(cik: str, filing_type: Optional[str] = None, count: int = 5) ->
     }
 
     try:
-        # Make the GET request
-        response = requests.get(url, headers=headers)
-
-        # Check if the request was successful
-        if response.status_code != 200:
-            print(f"Error: Failed to retrieve filings. Status code: {response.status_code}")
-            return [{"error": f"Failed to retrieve filings. Status code: {response.status_code}"}]
+        # Make the GET request with retry logic
+        try:
+            response = make_request(url, headers)
+        except Exception as e:
+            print(f"Error: Failed to retrieve filings: {str(e)}")
+            return [{"error": f"Failed to retrieve filings: {str(e)}"}]
 
         # Print response info for debugging
         print(f"Response status code: {response.status_code}")
@@ -309,6 +389,22 @@ def find_filings(cik: str, filing_type: Optional[str] = None, count: int = 5) ->
         print(f"Error in get_recent_filings: {str(e)}")
         return [{"error": f"Failed to retrieve filings: {str(e)}"}]
 
+@retry_with_backoff(max_retries=3, initial_delay=2.0, retry_on=should_retry_request)
+def make_request(url: str, headers: Dict[str, str]) -> requests.Response:
+    """
+    Make an HTTP request with retry logic.
+
+    Args:
+        url (str): The URL to request
+        headers (Dict[str, str]): The headers to include in the request
+
+    Returns:
+        requests.Response: The response from the server
+    """
+    response = requests.get(url, headers=headers, timeout=30)
+    response.raise_for_status()  # Raise an exception for 4xx/5xx status codes
+    return response
+
 def extract_filing_text(filing_url: str) -> str:
     """
     Extract the text content from an SEC filing.
@@ -317,6 +413,8 @@ def extract_filing_text(filing_url: str) -> str:
     then finds the link to the filing document, and finally retrieves and parses the document.
     It includes multiple fallback mechanisms to handle different filing formats and structures.
     The function ensures that only text content is returned, with no images.
+
+    This function uses retry logic with exponential backoff to handle rate limits and transient errors.
 
     Args:
         filing_url (str): The URL of the SEC filing index page
@@ -330,13 +428,12 @@ def extract_filing_text(filing_url: str) -> str:
     }
 
     try:
-        print(f"Accessing filing URL: {filing_url}")
-        # Make the GET request to the index page
-        response = requests.get(filing_url, headers=headers)
-
-        # Check if the request was successful
-        if response.status_code != 200:
-            return f"Failed to retrieve filing index page. Status code: {response.status_code}"
+        # Reduced logging to prevent excessive output
+        # Make the GET request to the index page with retry logic
+        try:
+            response = make_request(filing_url, headers)
+        except Exception as e:
+            return f"Failed to retrieve filing index page: {str(e)}"
 
         # Parse the HTML response
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -352,8 +449,8 @@ def extract_filing_text(filing_url: str) -> str:
 
                 # Fetch the actual document
                 try:
-                    doc_response = requests.get(actual_doc_url, headers=headers)
-                    if doc_response.status_code == 200:
+                    try:
+                        doc_response = make_request(actual_doc_url, headers)
                         print(f"Successfully retrieved actual document ({len(doc_response.text)} characters)")
                         # Parse the document
                         doc_soup = BeautifulSoup(doc_response.text, 'html.parser')
@@ -372,10 +469,10 @@ def extract_filing_text(filing_url: str) -> str:
                         text_content = re.sub(r'\s{3,}', ' ', text_content)     # Remove excessive spaces
 
                         if len(text_content.strip()) > 1000:
-                            print(f"Successfully extracted {len(text_content)} characters of text from actual document")
+                            # Reduced logging to prevent excessive output
                             return text_content
-                    else:
-                        print(f"Failed to retrieve actual document: {doc_response.status_code}")
+                    except Exception as e:
+                        print(f"Failed to retrieve actual document: {str(e)}")
                 except Exception as e:
                     print(f"Error retrieving actual document: {str(e)}")
             else:
@@ -409,7 +506,7 @@ def extract_filing_text(filing_url: str) -> str:
                 is_direct_document = True
 
         if is_direct_document:
-            print("This appears to be a direct document page, not an index. Processing directly.")
+            # Reduced logging to prevent excessive output
 
             # Try to find the main content container first
             main_content = None
@@ -434,7 +531,7 @@ def extract_filing_text(filing_url: str) -> str:
 
             # If still no container found, use the whole document
             if not main_content:
-                print("No specific content container found, using the whole document")
+                # Reduced logging to prevent excessive output
                 main_content = soup
 
             # Remove image tags from the selected content
@@ -473,7 +570,7 @@ def extract_filing_text(filing_url: str) -> str:
                     text_content = re.sub(r'\n{3,}', '\n\n', text_content)  # Remove excessive newlines
                     text_content = re.sub(r'\s{3,}', ' ', text_content)     # Remove excessive spaces
 
-            print(f"Successfully extracted {len(text_content)} characters of text from direct document page")
+            # Reduced logging to prevent excessive output
             return text_content
 
         print("Looking for document links in the index page...")
@@ -658,17 +755,16 @@ def extract_filing_text(filing_url: str) -> str:
             base_url = '/'.join(filing_url.split('/')[:-1])
             document_url = f"{base_url}/{document_link}"
 
-        # Make the GET request to the document
-        response = requests.get(document_url, headers=headers)
-
-        # Check if the request was successful
-        if response.status_code != 200:
+        # Make the GET request to the document with retry logic
+        try:
+            response = make_request(document_url, headers)
+        except Exception as e:
             # Try an alternative approach - extract text from the index page
             text_content = soup.get_text(separator='\n')
             if len(text_content.strip()) > 100:  # Ensure we have meaningful content
                 return text_content
             else:
-                return f"Failed to retrieve document file. Status code: {response.status_code}"
+                return f"Failed to retrieve document file: {str(e)}"
 
         # Parse the HTML response
         document_soup = BeautifulSoup(response.text, 'html.parser')
@@ -725,8 +821,8 @@ def extract_filing_text(filing_url: str) -> str:
                 for alt_url in alternative_urls:
                     print(f"Trying alternative URL: {alt_url}")
                     try:
-                        alt_response = requests.get(alt_url, headers=headers)
-                        if alt_response.status_code == 200 and len(alt_response.text) > 5000:
+                        alt_response = make_request(alt_url, headers)
+                        if len(alt_response.text) > 5000:
                             print(f"Found alternative version at {alt_url} ({len(alt_response.text)} characters)")
                             response = alt_response
                             document_soup = BeautifulSoup(response.text, 'html.parser')
@@ -734,6 +830,7 @@ def extract_filing_text(filing_url: str) -> str:
                             break
                     except Exception as e:
                         print(f"Error retrieving alternative version from {alt_url}: {str(e)}")
+                        continue
 
                 # If we still have an XBRL document, try to extract the actual document URL from the SEC website
                 if is_xbrl and '/ix?doc=' in document_url:
@@ -750,8 +847,8 @@ def extract_filing_text(filing_url: str) -> str:
                             index_url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc_num.replace('-', '')}/{acc_num}-index.htm"
                             print(f"Trying to find document links from index page: {index_url}")
 
-                            index_response = requests.get(index_url, headers=headers)
-                            if index_response.status_code == 200:
+                            try:
+                                index_response = make_request(index_url, headers)
                                 index_soup = BeautifulSoup(index_response.text, 'html.parser')
 
                                 # Look for links to the 10-K document (not XBRL)
@@ -767,8 +864,8 @@ def extract_filing_text(filing_url: str) -> str:
 
                                             print(f"Found potential 10-K document link: {doc_url}")
                                             try:
-                                                doc_response = requests.get(doc_url, headers=headers)
-                                                if doc_response.status_code == 200 and len(doc_response.text) > 5000:
+                                                doc_response = make_request(doc_url, headers)
+                                                if len(doc_response.text) > 5000:
                                                     print(f"Successfully retrieved document from link ({len(doc_response.text)} characters)")
                                                     response = doc_response
                                                     document_soup = BeautifulSoup(response.text, 'html.parser')
@@ -777,6 +874,8 @@ def extract_filing_text(filing_url: str) -> str:
                                                         break
                                             except Exception as e:
                                                 print(f"Error retrieving document from link: {str(e)}")
+                            except Exception as e:
+                                print(f"Failed to retrieve index page: {str(e)}")
                     except Exception as e:
                         print(f"Error trying to find document from index page: {str(e)}")
 
@@ -827,7 +926,7 @@ def extract_filing_text(filing_url: str) -> str:
 
         # If no specific container found, use the whole document
         if not main_content:
-            print("No specific content container found, using the whole document")
+            # Reduced logging to prevent excessive output
             main_content = document_soup
 
         # Special handling for XBRL documents
@@ -851,8 +950,8 @@ def extract_filing_text(filing_url: str) -> str:
                     print(f"Trying to access complete submission text file: {complete_submission_url}")
 
                     try:
-                        txt_response = requests.get(complete_submission_url, headers=headers)
-                        if txt_response.status_code == 200 and len(txt_response.text) > 10000:
+                        txt_response = make_request(complete_submission_url, headers)
+                        if len(txt_response.text) > 10000:
                             print(f"Successfully retrieved complete submission text file ({len(txt_response.text)} characters)")
 
                             # Extract the 10-K document from the complete submission
@@ -999,7 +1098,7 @@ def extract_filing_text(filing_url: str) -> str:
                             if len(pre_text.strip()) > 500:  # Only add substantial pre tags
                                 text_content += "\n\n" + pre_text
 
-        print(f"Successfully extracted {len(text_content)} characters of text")
+        # Reduced logging to prevent excessive output
         return text_content
 
     except Exception as e:
@@ -1171,7 +1270,7 @@ def extract_filing_information(filing_text: str, keywords: Optional[List[str]] =
 
     return extracted_info
 
-def summarize_filing(filing_url: str, chunk_index: int) -> str:
+def summarize_filing(filing_url: str, chunk_index: int, max_chunk_size: int) -> str:
     """
     Extract and summarize the text content from an SEC filing.
 
@@ -1206,7 +1305,7 @@ def summarize_filing(filing_url: str, chunk_index: int) -> str:
     filing_url = apple_filings[0]["link"]
 
     # Extract the filing text
-    filing_text = summarize_filing(filing_url)
+    filing_text = summarize_filing(filing_url, 0, 200000)
 
     # Now YOU (the agent) should analyze the text and create a summary
     # highlighting the most important information
@@ -1214,16 +1313,39 @@ def summarize_filing(filing_url: str, chunk_index: int) -> str:
 
     Args:
         filing_url (str): The URL of the SEC filing
-        chunk_index (int): Parameter kept for backward compatibility, not used
+        chunk_index (int): Index of the chunk to return (0-based). Use -1 to get information about total chunks.
+        max_chunk_size (int): Maximum size of each chunk in characters.
 
     Returns:
-        str: The complete text content of the filing
+        str: A chunk of the filing text, or information about the total number of chunks
     """
     # Extract the text content from the filing
     filing_text = extract_filing_text(filing_url)
 
-    # Return the complete filing text
-    return filing_text
+    # Calculate the total number of chunks
+    total_length = len(filing_text)
+    total_chunks = (total_length + max_chunk_size - 1) // max_chunk_size  # Ceiling division
+
+    # If chunk_index is -1, return information about the total number of chunks
+    if chunk_index == -1:
+        return f"Filing has {total_chunks} chunks. Use chunk_index=0 to {total_chunks-1} to retrieve specific chunks."
+
+    # Validate chunk_index
+    if chunk_index < 0 or chunk_index >= total_chunks:
+        return f"Invalid chunk_index. Filing has {total_chunks} chunks. Use chunk_index=0 to {total_chunks-1}."
+
+    # Calculate the start and end positions for the requested chunk
+    start_pos = chunk_index * max_chunk_size
+    end_pos = min(start_pos + max_chunk_size, total_length)
+
+    # Extract the requested chunk
+    chunk_text = filing_text[start_pos:end_pos]
+
+    # Add information about the chunk
+    chunk_info = f"[Chunk {chunk_index+1} of {total_chunks}] "
+
+    # Return the chunk with information
+    return chunk_info + chunk_text
 
 def analyze_filing(filing_text: str, keywords: Optional[List[str]] = None) -> Dict[str, Any]:
     """
