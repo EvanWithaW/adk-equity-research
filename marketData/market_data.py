@@ -20,6 +20,9 @@ import re
 import os
 import yfinance as yf
 
+# Import configuration for Alpha Vantage API
+from filingsResearch.config import Config
+
 # Yahoo Finance API Information:
 # 
 # This module uses the yfinance package to retrieve market data:
@@ -592,8 +595,9 @@ def get_market_news(ticker: Optional[str] = None) -> Dict[str, Any]:
     """
     Get the latest market news, optionally filtered by a specific ticker.
 
-    This tool retrieves recent news articles related to the market or a specific company.
-    It can be used to stay informed about market developments and company-specific news.
+    This tool retrieves recent news articles related to the market or a specific company
+    using the Alpha Vantage NEWS_SENTIMENT API. It can be used to stay informed about 
+    market developments and company-specific news.
 
     HOW TO USE THIS TOOL:
     1. Optionally provide a ticker symbol to get news specific to that company
@@ -620,88 +624,78 @@ def get_market_news(ticker: Optional[str] = None) -> Dict[str, Any]:
         ticker = ticker.strip().upper()
 
     try:
+        # Get the Alpha Vantage API key
+        api_key = Config.get_alpha_vantage_api_key()
+        if not api_key:
+            raise ValueError("Alpha Vantage API key is required but not found in environment variables.")
+
         # Print debugging information
-        print(f"Requesting market news for {ticker if ticker else 'general market'} using yfinance")
+        print(f"Requesting market news for {ticker if ticker else 'general market'} using Alpha Vantage API")
 
-        # Get the ticker information using yfinance
+        # Alpha Vantage API endpoint for news
+        api_url = "https://www.alphavantage.co/query"
+
+        # Set up the query parameters
+        params = {
+            "function": "NEWS_SENTIMENT",
+            "apikey": api_key
+        }
+
+        # Add ticker if provided
         if ticker:
-            stock = yf.Ticker(ticker)
+            params["tickers"] = ticker
 
-            # Try to get news from the ticker info
-            # Note: yfinance doesn't have a direct method for retrieving news
-            # We'll extract what we can from the available data
+        # Make the API request
+        response = requests.get(api_url, params=params)
 
-            # Get company information that might contain news
-            info = stock.info
+        # Check if the request was successful
+        if response.status_code != 200:
+            raise ValueError(f"Failed to retrieve news data: Status code {response.status_code}")
 
-            # Create a list of news articles
-            articles = []
+        # Parse the JSON response
+        data = response.json()
 
-            # Add company description as a "news" item if available
-            if 'longBusinessSummary' in info and info['longBusinessSummary']:
-                articles.append({
-                    "title": f"About {ticker}: Company Overview",
-                    "publisher": "Company Information",
-                    "published_time": "N/A",
-                    "published_time_formatted": "N/A",
-                    "summary": info['longBusinessSummary'],
-                    "url": f"https://finance.yahoo.com/quote/{ticker}"
-                })
+        # Check if we have valid data
+        if not data or "feed" not in data:
+            raise ValueError(f"No news data found in response")
 
-            # Add recent earnings information if available
-            if 'lastDividendDate' in info and info['lastDividendDate']:
-                try:
-                    dividend_date = datetime.fromtimestamp(info['lastDividendDate'])
-                    articles.append({
-                        "title": f"{ticker} Last Dividend Information",
-                        "publisher": "Financial Data",
-                        "published_time": info['lastDividendDate'],
-                        "published_time_formatted": dividend_date.strftime("%Y-%m-%d"),
-                        "summary": f"Last dividend date: {dividend_date.strftime('%Y-%m-%d')}. Amount: ${info.get('lastDividendValue', 'N/A')}",
-                        "url": f"https://finance.yahoo.com/quote/{ticker}"
-                    })
-                except:
-                    pass
+        # Extract the news articles
+        news_feed = data["feed"]
 
-            # Add a note about using a dedicated news API
-            articles.append({
-                "title": "Note: Limited News Availability",
-                "publisher": "System Message",
-                "published_time": int(datetime.now().timestamp()),
-                "published_time_formatted": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "summary": "For comprehensive and up-to-date news, consider using a dedicated financial news API or service. The yfinance package has limited news retrieval capabilities.",
-                "url": "#"
-            })
+        # Create a list of articles
+        articles = []
+        for item in news_feed:
+            # Extract the publication time
+            try:
+                pub_time = datetime.strptime(item.get("time_published", ""), "%Y%m%dT%H%M%S")
+                pub_time_formatted = pub_time.strftime("%Y-%m-%d %H:%M:%S")
+                pub_time_timestamp = int(pub_time.timestamp())
+            except (ValueError, TypeError):
+                pub_time_formatted = "Unknown"
+                pub_time_timestamp = 0
 
-            # Create the result dictionary
-            result = {
-                "ticker": ticker,
-                "article_count": len(articles),
-                "articles": articles,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "source": "yfinance (limited news capability)"
+            # Create an article object
+            article = {
+                "title": item.get("title", "No title available"),
+                "publisher": item.get("source", "Unknown source"),
+                "published_time": pub_time_timestamp,
+                "published_time_formatted": pub_time_formatted,
+                "summary": item.get("summary", "No summary available"),
+                "url": item.get("url", "#"),
+                "sentiment": item.get("overall_sentiment_score", 0)
             }
-        else:
-            # For general market news, provide a message about using a dedicated news API
-            articles = [{
-                "title": "Market News Not Available",
-                "publisher": "System Message",
-                "published_time": int(datetime.now().timestamp()),
-                "published_time_formatted": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "summary": "General market news is not available through the yfinance package. For comprehensive market news, consider using a dedicated financial news API or service.",
-                "url": "#"
-            }]
+            articles.append(article)
 
-            # Create the result dictionary
-            result = {
-                "ticker": None,
-                "article_count": len(articles),
-                "articles": articles,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "source": "System Message"
-            }
+        # Create the result dictionary
+        result = {
+            "ticker": ticker,
+            "article_count": len(articles),
+            "articles": articles,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "source": "Alpha Vantage NEWS_SENTIMENT API"
+        }
 
-        print(f"Returning available information for {ticker if ticker else 'general market'}")
+        print(f"Successfully retrieved {len(articles)} news articles for {ticker if ticker else 'general market'}")
         return result
 
     except Exception as e:

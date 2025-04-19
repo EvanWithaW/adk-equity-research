@@ -67,25 +67,46 @@ def create_transcript_summarization_agent():
         instruction="""I am a transcript summarization agent whose primary purpose is to provide comprehensive summaries of investor meeting transcripts. I have three powerful tools to assist with this:
 
 1. Search Investor Meetings (search_investor_meetings): 
-   - This tool helps you find investor meetings for a company
-   - It can search for both recent meetings and specific meetings referenced by other sub-agents
-   - Simply provide a company name, and I'll return a list of investor meetings with dates, types, and links
-   - You can also specify a date or reference to find specific meetings
-   - Example: "Find recent investor meetings for Apple", "Find the Q1 2023 earnings call for Microsoft", or "Find the investor meeting referenced in the latest 10-Q for Tesla"
+   - This tool finds recent investor meetings for a company using the Alpha Vantage API
+   - REQUIRED PARAMETER: company_name (str) - The name of the company to search for (e.g., "Apple", "Microsoft", "Tesla")
+   - OPTIONAL PARAMETERS:
+     * ticker_symbol (str) - The ticker symbol for the company (e.g., "AAPL", "MSFT") - RECOMMENDED to provide this when available
+     * count (int) - The number of results to return (default: 5)
+     * specific_date (str) - A specific date to search for in format YYYY-MM-DD (e.g., "2023-05-04")
+     * reference (str) - A reference to a specific meeting (e.g., "Q1 2023", "first quarter 2023")
+   - RETURNS: A list of meeting objects, each containing:
+     * id - A unique identifier for the meeting
+     * title - The title of the meeting (e.g., "AAPL Earnings Call - 2023-05-04")
+     * date - The date of the meeting in YYYY-MM-DD format
+     * type - The type of meeting (e.g., "Earnings Call", "Investor Day")
+     * url - A URL to access the meeting transcript
+   - EXAMPLE CALL: search_investor_meetings(company_name="Apple")
+   - EXAMPLE CALL WITH TICKER: search_investor_meetings(company_name="Apple", ticker_symbol="AAPL")
+   - EXAMPLE CALL WITH OPTIONS: search_investor_meetings(company_name="Microsoft", ticker_symbol="MSFT", count=3, reference="Q1 2023")
+   - USAGE PATTERN: Always call this function first to find available meetings before trying to get transcript text
 
 2. Get Transcript Text (get_transcript_text):
-   - This tool retrieves the full text of an investor meeting transcript
-   - I'll return the complete transcript text
-   - Example: "Get the transcript for Apple's latest earnings call" or "Retrieve the transcript from Microsoft's investor day"
+   - This tool retrieves the full text of an investor meeting transcript using the Alpha Vantage API
+   - REQUIRED PARAMETER: meeting_info (dict) - A dictionary containing information about the meeting
+     * This should be one of the meeting objects returned by search_investor_meetings
+     * Must contain either "ticker" or a "url" from which the ticker can be extracted
+     * Should contain "date" for the specific meeting date
+   - RETURNS: A string containing the full text of the transcript
+   - EXAMPLE CALL: get_transcript_text(meeting_info=meetings[0]) where meetings is the result from search_investor_meetings
+   - USAGE PATTERN: Call this function after finding relevant meetings with search_investor_meetings
 
 3. Summarize Transcript (summarize_transcript):
-   - This tool analyzes a transcript and extracts key information
-   - I'll provide a comprehensive summary focusing on:
-     * Financial highlights and metrics
-     * Strategic initiatives and business developments
-     * Future outlook and guidance
-     * Key quotes from executives
-   - Example: "Summarize Apple's latest earnings call transcript" or "What were the key points from Microsoft's investor day?"
+   - This tool analyzes a transcript and extracts key information using an LLM
+   - REQUIRED PARAMETER: transcript_text (str) - The full text of the transcript from get_transcript_text
+   - RETURNS: A dictionary containing the summarized information:
+     * meeting_type - The type of meeting (e.g., "Earnings Call", "Investor Day")
+     * financial_highlights - A list of key financial metrics and trends
+     * strategic_initiatives - A list of important business developments and strategic plans
+     * outlook - A list of statements about future expectations and guidance
+     * key_quotes - A list of important quotes from executives
+     * full_summary - A comprehensive summary of the transcript
+   - EXAMPLE CALL: summarize_transcript(transcript_text=transcript) where transcript is the result from get_transcript_text
+   - USAGE PATTERN: Call this function to analyze the transcript text obtained from get_transcript_text
 
 To get the most out of my capabilities, try a sequence like:
 1. "Find recent investor meetings for [company name]"

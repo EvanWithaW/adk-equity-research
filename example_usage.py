@@ -26,7 +26,7 @@ from google.genai.types import UserContent
 from google.genai.errors import ClientError
 
 # Rate limiting parameters
-MAX_RETRIES = 5
+MAX_RETRIES = 7
 INITIAL_DELAY = 2.0
 BACKOFF_FACTOR = 2.0
 JITTER_FACTOR = 0.1
@@ -233,6 +233,13 @@ async def run_example():
                                         print(f"[Market-Data-Agent]: Retrieving company information...", end="")
                                     elif func_call.name == "get_market_news":
                                         print(f"[Market-Data-Agent]: Retrieving market news...", end="")
+                                    # Transcript Summarization Agent functions
+                                    elif func_call.name == "search_investor_meetings":
+                                        print(f"[Transcript-Summarization-Agent]: Searching for investor meetings...", end="")
+                                    elif func_call.name == "get_transcript_text":
+                                        print(f"[Transcript-Summarization-Agent]: Retrieving transcript text...", end="")
+                                    elif func_call.name == "summarize_transcript":
+                                        print(f"[Transcript-Summarization-Agent]: Summarizing transcript...", end="")
                                     # Default for any other functions
                                     else:
                                         print(f"[Investment-Recommendation-Agent]: Processing your request...", end="")
@@ -263,6 +270,46 @@ async def run_example():
                                         print(f"\n\n[SEC-Filings-Research-Agent]: Filing Summary (first {summary_length} characters):\n{response_data[:summary_length]}...\n", end="")
                                     else:
                                         print(f" [SEC-Filings-Research-Agent]: (Response format not recognized: {type(response_data)})", end="")
+
+                                # For search_investor_meetings responses, provide a simple message
+                                elif func_response.name == "search_investor_meetings":
+                                    print("[Transcript-Summarization-Agent]: (Processing investor meetings...)", end="")
+
+                                    # Get the response data
+                                    response_data = func_response.response
+
+                                    # Print a message indicating that we've successfully found investor meetings
+                                    if isinstance(response_data, list):
+                                        print(f" [Transcript-Summarization-Agent]: (Found {len(response_data)} investor meetings)", end="")
+
+                                        # Print a summary of the meetings
+                                        if len(response_data) > 0:
+                                            print("\n\n[Transcript-Summarization-Agent]: Investor Meetings Found:", end="")
+                                            for i, meeting in enumerate(response_data[:3]):  # Show first 3 meetings
+                                                print(f"\n{i+1}. {meeting.get('title', 'Unknown Meeting')} - {meeting.get('date', 'Unknown Date')}", end="")
+                                            if len(response_data) > 3:
+                                                print(f"\n...and {len(response_data) - 3} more meetings", end="")
+                                            print("\n", end="")
+                                        else:
+                                            print("\n\n[Transcript-Summarization-Agent]: No investor meetings found.\n", end="")
+                                    elif isinstance(response_data, dict):
+                                        # Handle the case where response_data is a dictionary
+                                        # This might be a single meeting or an error message
+                                        if 'error' in response_data:
+                                            print(f" [Transcript-Summarization-Agent]: Error: {response_data.get('error', 'Unknown error')}", end="")
+                                        elif 'message' in response_data:
+                                            print(f" [Transcript-Summarization-Agent]: {response_data.get('message', 'No message provided')}", end="")
+                                        elif 'title' in response_data:
+                                            # This appears to be a single meeting
+                                            print(f" [Transcript-Summarization-Agent]: (Found 1 investor meeting)", end="")
+                                            print(f"\n\n[Transcript-Summarization-Agent]: Investor Meeting Found:", end="")
+                                            print(f"\n1. {response_data.get('title', 'Unknown Meeting')} - {response_data.get('date', 'Unknown Date')}", end="")
+                                            print("\n", end="")
+                                        else:
+                                            # Unknown dictionary format
+                                            print(f" [Transcript-Summarization-Agent]: (Response is a dictionary with keys: {', '.join(response_data.keys())})", end="")
+                                    else:
+                                        print(f" [Transcript-Summarization-Agent]: (Response format not recognized: {type(response_data)})", end="")
 
                             # Handle image responses (warn and skip)
                             elif hasattr(part, 'inline_data') and part.inline_data:
@@ -367,6 +414,13 @@ async def run_example():
                                             print(f"[Market-Data-Agent]: Retrieving company information...", end="")
                                         elif func_call.name == "get_market_news":
                                             print(f"[Market-Data-Agent]: Retrieving market news...", end="")
+                                        # Transcript Summarization Agent functions
+                                        elif func_call.name == "search_investor_meetings":
+                                            print(f"[Transcript-Summarization-Agent]: Searching for investor meetings...", end="")
+                                        elif func_call.name == "get_transcript_text":
+                                            print(f"[Transcript-Summarization-Agent]: Retrieving transcript text...", end="")
+                                        elif func_call.name == "summarize_transcript":
+                                            print(f"[Transcript-Summarization-Agent]: Summarizing transcript...", end="")
                                         # Default for any other functions
                                         else:
                                             print(f"[Investment-Recommendation-Agent]: Processing your request...", end="")
@@ -391,6 +445,46 @@ async def run_example():
                                             print(f"\n\n[SEC-Filings-Research-Agent]: Filing Summary (first {summary_length} characters):\n{response_data[:summary_length]}...\n", end="")
                                         else:
                                             print(f" [SEC-Filings-Research-Agent]: (Response format not recognized: {type(response_data)})", end="")
+
+                                    # For search_investor_meetings responses, provide a simple message
+                                    elif func_response.name == "search_investor_meetings":
+                                        print("[Transcript-Summarization-Agent]: (Processing investor meetings...)", end="")
+
+                                        # Get the response data
+                                        response_data = func_response.response
+
+                                        # Print a message indicating that we've successfully found investor meetings
+                                        if isinstance(response_data, list):
+                                            print(f" [Transcript-Summarization-Agent]: (Found {len(response_data)} investor meetings)", end="")
+
+                                            # Print a summary of the meetings
+                                            if len(response_data) > 0:
+                                                print("\n\n[Transcript-Summarization-Agent]: Investor Meetings Found:", end="")
+                                                for i, meeting in enumerate(response_data[:3]):  # Show first 3 meetings
+                                                    print(f"\n{i+1}. {meeting.get('title', 'Unknown Meeting')} - {meeting.get('date', 'Unknown Date')}", end="")
+                                                if len(response_data) > 3:
+                                                    print(f"\n...and {len(response_data) - 3} more meetings", end="")
+                                                print("\n", end="")
+                                            else:
+                                                print("\n\n[Transcript-Summarization-Agent]: No investor meetings found.\n", end="")
+                                        elif isinstance(response_data, dict):
+                                            # Handle the case where response_data is a dictionary
+                                            # This might be a single meeting or an error message
+                                            if 'error' in response_data:
+                                                print(f" [Transcript-Summarization-Agent]: Error: {response_data.get('error', 'Unknown error')}", end="")
+                                            elif 'message' in response_data:
+                                                print(f" [Transcript-Summarization-Agent]: {response_data.get('message', 'No message provided')}", end="")
+                                            elif 'title' in response_data:
+                                                # This appears to be a single meeting
+                                                print(f" [Transcript-Summarization-Agent]: (Found 1 investor meeting)", end="")
+                                                print(f"\n\n[Transcript-Summarization-Agent]: Investor Meeting Found:", end="")
+                                                print(f"\n1. {response_data.get('title', 'Unknown Meeting')} - {response_data.get('date', 'Unknown Date')}", end="")
+                                                print("\n", end="")
+                                            else:
+                                                # Unknown dictionary format
+                                                print(f" [Transcript-Summarization-Agent]: (Response is a dictionary with keys: {', '.join(response_data.keys())})", end="")
+                                        else:
+                                            print(f" [Transcript-Summarization-Agent]: (Response format not recognized: {type(response_data)})", end="")
 
                                 # Handle image responses (warn and skip)
                                 elif hasattr(part, 'inline_data') and part.inline_data:

@@ -97,16 +97,50 @@ def test_get_transcript_text():
     else:
         print("\nCould not find Apple meetings. Skipping transcript text test.")
 
-    # Test with a manually created meeting info
-    print("\nTesting with manually created meeting info:")
+    # Test with a manually created meeting info with explicit quarter information
+    print("\nTesting with manually created meeting info (explicit quarter):")
     manual_meeting_info = {
         "ticker": "AAPL",
-        "date": "2023-05-04",  # This is an example date, might need to be adjusted
+        "date": "2023-05-04",
         "title": "Apple Q2 2023 Earnings Call",
         "type": "Earnings Call",
         "source": "Alpha Vantage"
     }
     transcript = get_transcript_text(manual_meeting_info)
+    print("Transcript excerpt:")
+    print(transcript[:500] + "...\n" if len(transcript) > 500 else transcript)
+
+    # Test with a manually created meeting info for a recent quarter
+    print("\nTesting with manually created meeting info (recent quarter):")
+    # Get the current date
+    from datetime import datetime
+    current_date = datetime.now()
+    # Calculate the current quarter
+    current_quarter = ((current_date.month - 1) // 3) + 1
+    current_year = current_date.year
+
+    # Test with IBM which is mentioned in the API documentation
+    manual_meeting_info_ibm = {
+        "ticker": "IBM",
+        "date": current_date.strftime("%Y-%m-%d"),
+        "title": f"IBM Q{current_quarter} {current_year} Earnings Call",
+        "type": "Earnings Call",
+        "source": "Alpha Vantage"
+    }
+    transcript = get_transcript_text(manual_meeting_info_ibm)
+    print("Transcript excerpt:")
+    print(transcript[:500] + "...\n" if len(transcript) > 500 else transcript)
+
+    # Test with a meeting info that doesn't have quarter information
+    print("\nTesting with meeting info without quarter information:")
+    no_quarter_info = {
+        "ticker": "MSFT",
+        "date": "2023-07-15",  # This date should map to Q3
+        "title": "Microsoft Earnings Call",  # No quarter information in the title
+        "type": "Earnings Call",
+        "source": "Alpha Vantage"
+    }
+    transcript = get_transcript_text(no_quarter_info)
     print("Transcript excerpt:")
     print(transcript[:500] + "...\n" if len(transcript) > 500 else transcript)
 
