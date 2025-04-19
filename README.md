@@ -6,6 +6,8 @@
 
 The ADK Equity Research Agent is a powerful tool built using Google's Agent Development Kit (ADK) that enables comprehensive equity research by analyzing SEC filings, market data, and investor meeting transcripts. This agent serves as an intelligent assistant for financial analysts, investors, and researchers who need to quickly access, analyze, and extract insights from multiple sources of financial information.
 
+The main endeavor of this project is to minimize the barrier of entry to equity research. By leveraging free API keys with Google's Large Language Models (LLMs), the system allows anyone to get valuable information to help conduct research on U.S. based equities without the need for expensive financial terminals or subscriptions. This democratizes access to financial research tools, making them available to individual investors, students, and small firms who might otherwise be priced out of comprehensive equity research capabilities.
+
 ## Key Features
 
 - **Company Information Lookup**: Find CIK (Central Index Key) numbers for companies and retrieve detailed company information from the SEC's EDGAR database.
@@ -21,7 +23,9 @@ The ADK Equity Research Agent is a powerful tool built using Google's Agent Deve
 
 ## How It Works
 
-The agent integrates multiple data sources to provide comprehensive equity research. It can:
+The agent integrates multiple data sources to provide comprehensive equity research while maintaining accessibility for all users. With just a free Google API key, users can access sophisticated financial analysis that would typically require expensive subscriptions or specialized knowledge.
+
+The system simplifies the equity research process by automating the collection and analysis of information from various sources, making it accessible to individual investors, students, and small firms focusing on U.S. based equities. It can:
 
 1. Look up CIK numbers for companies using their name or ticker symbol
 2. Retrieve detailed company information from the SEC
@@ -33,6 +37,8 @@ The agent integrates multiple data sources to provide comprehensive equity resea
 8. Retrieve and analyze transcripts from investor meetings to extract key information
 9. Integrate information from all sources to provide holistic investment recommendations
 10. Perform web searches to supplement financial data
+
+All of these capabilities are available through a simple conversational interface, eliminating the need for specialized financial terminals or extensive training in financial analysis.
 
 ## Getting Started
 
