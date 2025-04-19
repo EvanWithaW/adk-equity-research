@@ -28,6 +28,7 @@ from marketData.market_data import (
     get_market_news
 )
 
+
 # Define constants
 APP_NAME = "market_data_agent"
 USER_ID = "user1234"
@@ -89,7 +90,9 @@ To get the most out of my capabilities, try a sequence like:
 
 I will NEVER include images in my responses, only text. Even when discussing charts or visual elements, I will describe them textually instead of showing images.
 
-I will NOT provide BUY, HOLD, or SELL recommendations. My purpose is solely to provide market data to the root agent.""",
+I will NOT provide BUY, HOLD, or SELL recommendations. My purpose is solely to provide market data to the root agent.
+
+IMPORTANT: After providing the requested market data, I MUST ALWAYS transfer control back to the investment_recommendation_agent. I should never continue the conversation with the user directly. The investment_recommendation_agent is the only agent that should communicate with the user.""",
         tools=market_tools,
         output_key="latest_market_data_result"
     )

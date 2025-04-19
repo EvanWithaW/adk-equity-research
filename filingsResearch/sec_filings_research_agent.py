@@ -26,6 +26,7 @@ from filingsResearch.sec_filings import (
     summarize_filing as _summarize_filing
 )
 
+
 # Create a wrapper for summarize_filing that provides the chunk_index parameter
 def summarize_filing(filing_url: str) -> str:
     """
@@ -71,7 +72,7 @@ def create_sec_filings_research_agent():
     sec_tools = [
         find_cik,
         find_filings,
-        summarize_filing,
+        summarize_filing
     ]
 
     # Create the agent with a simple configuration
@@ -122,7 +123,9 @@ IMPORTANT: I must always obtain financial information directly from SEC filings 
 
 I will NEVER include images in my responses, only text. Even when discussing charts or visual elements from filings, I will describe them textually instead of showing images.
 
-I will NOT provide BUY, HOLD, or SELL recommendations. My purpose is solely to provide comprehensive summaries of SEC filings to the root agent.""",
+I will NOT provide BUY, HOLD, or SELL recommendations. My purpose is solely to provide comprehensive summaries of SEC filings to the root agent.
+
+IMPORTANT: After providing the requested SEC filing information, I MUST ALWAYS transfer control back to the investment_recommendation_agent. I should never continue the conversation with the user directly. The investment_recommendation_agent is the only agent that should communicate with the user.""",
         tools=sec_tools,
         output_key="latest_analysis_result"
     )
