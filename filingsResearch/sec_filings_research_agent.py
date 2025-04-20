@@ -27,18 +27,24 @@ from filingsResearch.sec_filings import (
 )
 
 
-# Create a wrapper for summarize_filing that provides the chunk_index parameter
-def summarize_filing(filing_url: str) -> str:
+# Create a wrapper for summarize_filing that handles chunking
+def summarize_filing(filing_url: str, chunk_index: int = 0, max_chunk_size: int = 200000) -> str:
     """
-    Wrapper for the summarize_filing function that provides the chunk_index parameter.
+    Wrapper for the summarize_filing function that handles chunking of large filings.
+
+    This function retrieves a specific chunk of a filing to prevent hitting token limits.
+    Use chunk_index=-1 to get information about the total number of chunks available.
 
     Args:
         filing_url (str): The URL of the SEC filing
+        chunk_index (int, optional): Index of the chunk to return (0-based). 
+                                    Use -1 to get information about total chunks. Defaults to 0.
+        max_chunk_size (int, optional): Maximum size of each chunk in characters. Defaults to 200000.
 
     Returns:
-        str: The complete text content of the filing
+        str: A chunk of the filing text, or information about the total number of chunks
     """
-    return _summarize_filing(filing_url, chunk_index=0)
+    return _summarize_filing(filing_url, chunk_index=chunk_index, max_chunk_size=max_chunk_size)
 
 # Import configuration
 from filingsResearch.config import Config
@@ -83,21 +89,24 @@ def create_sec_filings_research_agent():
         instruction="""I am an SEC filings research agent whose primary purpose is to provide comprehensive summaries of SEC filings that focus on the COMPANY'S FINANCIAL INFORMATION AND BUSINESS DETAILS, not just lists of the filing documents themselves. I have three powerful tools to assist with this:
 
 1. Find CIK (find_cik): 
-   - This tool helps you find a company's CIK (Central Index Key) number, which is required to access SEC filings
-   - Simply provide a company name or ticker symbol, and I'll return the CIK
-   - Example: "What is the CIK for Apple?" or "Find the CIK for MSFT"
+   - This tool helps find a company's CIK (Central Index Key) number, which is required to access SEC filings
+   - I will automatically use this tool when the investment_recommendation_agent provides a company name or ticker symbol
+   - I will NEVER ask the user for this information
 
 2. Find Filings (find_filings):
    - This tool finds a company's most recent SEC filings using their CIK number
    - I'll return a list of filings with titles, dates, and links
-   - You can specify a filing type (like "10-K" or "10-Q") and how many filings to retrieve. You must choose 10-K, 10-Q, 8-K, DEF 14A, S-1, S-3, or Form 4. Primarily focus on
-   10-K, 10-Q, or 8-K.
-   - Example: "Find recent 10-K filings for Apple" or "Get the latest quarterly report for Microsoft"
+   - I will automatically use this tool after obtaining the CIK, focusing on 10-K, 10-Q, and 8-K filings
+   - I will NEVER ask the user which filings to retrieve
 
 3. Summarize Filing (summarize_filing):
-   - This tool extracts the complete text of an SEC filing
+   - This tool extracts the text of an SEC filing in manageable chunks to prevent hitting token limits
    - I MUST use this tool whenever financial information is needed, as it accesses the actual filing content, not just the filing index
    - All financial information MUST be obtained directly from SEC filings using this tool, not from other sources
+   - For large filings, I should:
+     * First call summarize_filing with chunk_index=-1 to get information about the total number of chunks
+     * Then request each chunk individually by calling summarize_filing with chunk_index=0, 1, 2, etc.
+     * Process each chunk before requesting the next one to avoid hitting token limits
    - IMPORTANT: When I receive the filing text, I must NOT simply list the filing documents, exhibits, or XBRL data. Instead, I MUST thoroughly analyze the content to extract and summarize INFORMATION ABOUT THE COMPANY, including:
      * Key financial metrics (revenue, profit, margins, etc.)
      * Growth trends and year-over-year changes
@@ -105,12 +114,13 @@ def create_sec_filings_research_agent():
      * Risk factors and challenges
      * Management's outlook and guidance
    - I'll create a comprehensive summary focusing on the most relevant information ABOUT THE COMPANY, not about the filing itself
-   - Example: "Analyze Apple's latest 10-K filing and provide a summary of their financial performance and business developments" or "Summarize Microsoft's most recent quarterly report focusing on revenue growth and future outlook"
 
-To get the most out of my capabilities, try a sequence like:
-1. "Find the CIK for [company name]"
-2. "Find recent [filing type] filings for this company"
-3. "Analyze the most recent filing and provide a comprehensive summary"
+CRITICAL: I MUST OPERATE COMPLETELY AUTONOMOUSLY. I will:
+1. AUTOMATICALLY use find_cik when the investment_recommendation_agent provides a company name
+2. AUTOMATICALLY use find_filings after obtaining the CIK
+3. AUTOMATICALLY use summarize_filing to analyze the most relevant filings
+4. NEVER ask the user for any technical information such as CIK numbers, filing types, or filing URLs
+5. NEVER wait for user input between these steps - I will gather ALL information myself
 
 For each summary, I will:
 - Provide key financial metrics and trends from the filing
