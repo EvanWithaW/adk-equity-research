@@ -11,13 +11,104 @@ These tools are used by the transcript_summarization_agent.
 """
 
 import requests
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple, Union
 from datetime import datetime, timedelta
 import json
 import re
+import time
+import random
 
 # Import configuration
 from filingsResearch.config import Config
+
+# Rate limiting parameters
+MAX_RETRIES = 7
+INITIAL_DELAY = 2.0
+BACKOFF_FACTOR = 2.0
+JITTER_FACTOR = 0.1
+
+def make_api_request_with_retry(url: str, params: Dict[str, str] = None) -> Tuple[bool, Union[Dict, str]]:
+    """
+    Make an API request with retry logic for rate limiting and network errors.
+
+    Args:
+        url (str): The API endpoint URL, may already include query parameters
+        params (Dict[str, str], optional): The query parameters for the request. 
+                                         If None or empty, assumes parameters are already in the URL.
+
+    Returns:
+        Tuple[bool, Union[Dict, str]]: A tuple containing:
+            - bool: True if the request was successful, False otherwise
+            - Union[Dict, str]: The response data if successful, or an error message if not
+    """
+    retry_count = 0
+    delay = INITIAL_DELAY
+
+    while True:
+        try:
+            # Make the API request
+            if params:
+                response = requests.get(url, params=params)
+            else:
+                response = requests.get(url)
+
+            # Check if the request was successful
+            if response.status_code != 200:
+                # Check if this is a rate limiting error (status code 429)
+                if response.status_code == 429:
+                    # If we've reached the maximum number of retries, return an error
+                    if retry_count >= MAX_RETRIES:
+                        return False, f"Rate limit exceeded after {MAX_RETRIES} retries. Please try again later."
+
+                    # Extract retry delay from response headers if available
+                    retry_delay = None
+                    if 'Retry-After' in response.headers:
+                        retry_delay = int(response.headers['Retry-After'])
+
+                    # Calculate delay with jitter
+                    if retry_delay:
+                        actual_delay = retry_delay
+                    else:
+                        actual_delay = delay * (1 + random.random() * JITTER_FACTOR)
+
+                    print(f"Rate limit exceeded. Waiting {actual_delay:.1f} seconds before retrying (attempt {retry_count + 1}/{MAX_RETRIES})...")
+
+                    # Wait before retrying
+                    time.sleep(actual_delay)
+
+                    # Increase delay for next retry using exponential backoff
+                    delay *= BACKOFF_FACTOR
+                    retry_count += 1
+                    continue
+                else:
+                    # For other status codes, return an error
+                    return False, f"Failed to retrieve data: Status code {response.status_code}"
+
+            # Try to parse the response as JSON
+            try:
+                data = response.json()
+                return True, data
+            except json.JSONDecodeError:
+                # If JSON parsing fails, return the raw text
+                return True, response.text
+
+        except requests.exceptions.RequestException as e:
+            # If we've reached the maximum number of retries, return an error
+            if retry_count >= MAX_RETRIES:
+                return False, f"Network error persisted after {MAX_RETRIES} retries: {str(e)}"
+
+            # Calculate delay with jitter
+            actual_delay = delay * (1 + random.random() * JITTER_FACTOR)
+
+            print(f"Network error detected: {type(e).__name__}. Waiting {actual_delay:.1f} seconds before retrying (attempt {retry_count + 1}/{MAX_RETRIES})...")
+
+            # Wait before retrying
+            time.sleep(actual_delay)
+
+            # Increase delay for next retry using exponential backoff
+            delay *= BACKOFF_FACTOR
+            retry_count += 1
+            continue
 
 def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = None, count: Optional[int] = None, specific_date: Optional[str] = None, reference: Optional[str] = None) -> List[Dict[str, Any]]:
     """
@@ -97,16 +188,21 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
             "apikey": api_key
         }
 
-        # Make the API request
-        response = requests.get(api_url, params=params)
+        # Make the API request with retry logic
+        success, response_data = make_api_request_with_retry(api_url, params)
 
         # Check if the request was successful
-        if response.status_code != 200:
-            raise ValueError(f"Failed to retrieve earnings data: Status code {response.status_code}")
+        if not success:
+            raise ValueError(f"Failed to retrieve earnings data: {response_data}")
 
         # Try to parse the response as JSON first
         try:
-            data = response.json()
+            # If response_data is already a dictionary, use it directly
+            if isinstance(response_data, dict):
+                data = response_data
+            else:
+                # Otherwise, try to parse it as JSON
+                data = json.loads(response_data) if isinstance(response_data, str) else {}
 
             # Check if we have valid JSON data with earnings
             if not data or "earnings" not in data:
@@ -118,7 +214,7 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
             # Alpha Vantage often returns CSV for EARNINGS_CALENDAR
             try:
                 # Get the raw text response
-                csv_data = response.text.strip()
+                csv_data = response_data.strip() if isinstance(response_data, str) else ""
 
                 # Check if we have any data
                 if not csv_data:
@@ -162,11 +258,22 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
                     "apikey": api_key
                 }
 
-                overview_response = requests.get(api_url, params=params)
-                if overview_response.status_code != 200:
-                    raise ValueError(f"No earnings data found for {ticker}")
+                # Make the API request with retry logic
+                overview_success, overview_response_data = make_api_request_with_retry(api_url, params)
 
-                overview_data = overview_response.json()
+                # Check if the request was successful
+                if not overview_success:
+                    raise ValueError(f"No earnings data found for {ticker}: {overview_response_data}")
+
+                # Parse the response data
+                if isinstance(overview_response_data, dict):
+                    overview_data = overview_response_data
+                else:
+                    try:
+                        overview_data = json.loads(overview_response_data) if isinstance(overview_response_data, str) else {}
+                    except json.JSONDecodeError:
+                        raise ValueError(f"Failed to parse company information for {ticker}")
+
                 if not overview_data or "Name" not in overview_data:
                     raise ValueError(f"No company information found for {ticker}")
 
@@ -177,13 +284,20 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
                     "apikey": api_key
                 }
 
-                response = requests.get(api_url, params=params)
-                if response.status_code != 200:
-                    raise ValueError(f"Failed to retrieve earnings data: Status code {response.status_code}")
+                # Make the API request with retry logic
+                success, response_data = make_api_request_with_retry(api_url, params)
+
+                # Check if the request was successful
+                if not success:
+                    raise ValueError(f"Failed to retrieve earnings data: {response_data}")
 
                 # Try parsing the new response as CSV
                 try:
-                    csv_data = response.text.strip()
+                    # If response_data is already a dictionary, convert it to string for CSV parsing
+                    if isinstance(response_data, dict):
+                        csv_data = json.dumps(response_data).strip()
+                    else:
+                        csv_data = response_data.strip() if isinstance(response_data, str) else ""
                     lines = csv_data.split('\n')
                     if len(lines) <= 1:
                         raise ValueError(f"No earnings data found for {ticker} (CSV format)")
@@ -208,9 +322,29 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
         # Extract the earnings data
         earnings_data = data["earnings"]  # Get all earnings data
 
-        # Filter by specific date if provided
+        # Check if specific_date is in the future
         if specific_date:
-            earnings_data = [e for e in earnings_data if e.get("reportedDate", "") == specific_date]
+            try:
+                specific_date_obj = datetime.strptime(specific_date, "%Y-%m-%d")
+                current_date = datetime.now()
+
+                # If the date is in the future, return a message
+                if specific_date_obj > current_date:
+                    return [{
+                        "id": "future_date",
+                        "title": f"Future date requested for {company_name}",
+                        "date": specific_date,
+                        "type": "Information",
+                        "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}",
+                        "source": "Alpha Vantage",
+                        "message": f"The requested date ({specific_date}) is in the future. Earnings call transcripts are only available for past events. Please try a date that has already occurred."
+                    }]
+
+                # If the date is not in the future, filter by it
+                earnings_data = [e for e in earnings_data if e.get("reportedDate", "") == specific_date]
+            except ValueError:
+                # If the date format is invalid, just try to filter as before
+                earnings_data = [e for e in earnings_data if e.get("reportedDate", "") == specific_date]
 
         # Filter by reference if provided (simple text matching)
         if reference:
@@ -277,8 +411,32 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
                         if month in month_dict:
                             extracted_dates.append(f"{year}-{month_dict[month]}")
 
-            # If we found date information, filter earnings data by those dates
+            # If we found date information, check if all dates are in the future
             if extracted_dates:
+                # Check if all extracted dates are in the future
+                all_future_dates = True
+                current_year_month = datetime.now().strftime("%Y-%m")
+
+                for extracted_date in extracted_dates:
+                    # Compare with current year and month (YYYY-MM format)
+                    if extracted_date <= current_year_month:
+                        all_future_dates = False
+                        break
+
+                # If all dates are in the future, return a message
+                if all_future_dates:
+                    future_period = reference
+                    return [{
+                        "id": "future_date_reference",
+                        "title": f"Future period requested for {company_name}",
+                        "date": datetime.now().strftime("%Y-%m-%d"),
+                        "type": "Information",
+                        "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}",
+                        "source": "Alpha Vantage",
+                        "message": f"The requested period ({future_period}) is in the future. Earnings call transcripts are only available for past events. Please try a period that has already occurred."
+                    }]
+
+                # If not all dates are in the future, filter earnings data by those dates
                 filtered_earnings = []
                 for e in earnings_data:
                     date_str = e.get("reportedDate", "")
@@ -312,7 +470,7 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
                 "title": f"{ticker} Earnings Call - {formatted_date}",
                 "date": formatted_date,
                 "type": "Earnings Call",
-                "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={ticker}&apikey={api_key}",
+                "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={ticker}",
                 "source": "Alpha Vantage",
                 "ticker": ticker
             }
@@ -326,7 +484,7 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
                 "title": f"No recent investor meetings found for {company_name}",
                 "date": datetime.now().strftime("%Y-%m-%d"),
                 "type": "Information",
-                "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}&apikey={api_key}",
+                "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}",
                 "source": "Alpha Vantage",
                 "message": f"No recent investor meetings were found for {company_name} using the Alpha Vantage API."
             }]
@@ -340,7 +498,7 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
             "title": f"Error finding meetings for {company_name}",
             "date": datetime.now().strftime("%Y-%m-%d"),
             "type": "Error",
-            "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}&apikey={api_key}",
+            "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}",
             "source": "Alpha Vantage",
             "error": str(e),
             "message": f"An error occurred while searching for investor meetings: {str(e)}"
@@ -406,6 +564,61 @@ def get_transcript_text(meeting_info: Dict[str, Any]) -> str:
         title = meeting_info.get("title", f"{ticker} Earnings Call on {date_str}")
         meeting_type = meeting_info.get("type", "Earnings Call")
 
+        # Check if quarter is directly provided in meeting_info
+        quarter = meeting_info.get("quarter", "")
+
+        # Check if the quarter is in the future (do this check early)
+        if quarter and re.match(r'^\d{4}Q[1-4]$', quarter):
+            try:
+                year_str, q_part = quarter.split('Q')
+                year_int = int(year_str)
+                q_num_int = int(q_part)
+                current_year = datetime.now().year
+                current_quarter = ((datetime.now().month - 1) // 3) + 1
+
+                # If the year is in the future, or it's the current year but a future quarter
+                if year_int > current_year or (year_int == current_year and q_num_int > current_quarter):
+                    return f"""
+# Transcript Information for {title}
+
+## Meeting Details
+- **Company**: {ticker}
+- **Date**: {date_str}
+- **Type**: {meeting_type}
+- **Quarter**: {quarter}
+
+## Error: Future Quarter Requested
+The requested quarter ({quarter}) is in the future. Earnings call transcripts are only available for past events.
+Please try a quarter that has already occurred.
+"""
+            except (ValueError, IndexError):
+                # If parsing fails, we'll continue with the existing quarter
+                pass
+
+        # Check if the date is in the future
+        if date_str and len(date_str) >= 10:
+            try:
+                date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                current_date = datetime.now()
+
+                # If the date is in the future, return a message
+                if date_obj > current_date:
+                    return f"""
+# Transcript Information for {title}
+
+## Meeting Details
+- **Company**: {ticker}
+- **Date**: {date_str}
+- **Type**: {meeting_type}
+
+## Error: Future Date Requested
+The requested date ({date_str}) is in the future. Earnings call transcripts are only available for past events.
+Please try a date that has already occurred.
+"""
+            except ValueError:
+                # If date parsing fails, we'll continue with the existing logic
+                pass
+
         # Extract quarter information from the date or title
         quarter = None
 
@@ -414,6 +627,33 @@ def get_transcript_text(meeting_info: Dict[str, Any]) -> str:
         if quarter_match:
             q_num = quarter_match.group(1)
             year = quarter_match.group(2)
+
+            # Check if the quarter is in the future
+            try:
+                year_int = int(year)
+                q_num_int = int(q_num)
+                current_year = datetime.now().year
+                current_quarter = ((datetime.now().month - 1) // 3) + 1
+
+                # If the year is in the future, or it's the current year but a future quarter
+                if year_int > current_year or (year_int == current_year and q_num_int > current_quarter):
+                    return f"""
+# Transcript Information for {title}
+
+## Meeting Details
+- **Company**: {ticker}
+- **Date**: {date_str}
+- **Type**: {meeting_type}
+- **Quarter**: {year}Q{q_num}
+
+## Error: Future Quarter Requested
+The requested quarter (Q{q_num} {year}) is in the future. Earnings call transcripts are only available for past events.
+Please try a quarter that has already occurred.
+"""
+            except ValueError:
+                # If parsing fails, continue with the existing logic
+                pass
+
             quarter = f"{year}Q{q_num}"
         else:
             # Try to extract quarter from date (format: YYYY-MM-DD)
@@ -424,26 +664,81 @@ def get_transcript_text(meeting_info: Dict[str, Any]) -> str:
                     month = date_obj.month
                     # Map month to quarter
                     q_num = ((month - 1) // 3) + 1
-                    quarter = f"{year}Q{q_num}"
-                except ValueError:
-                    # If date parsing fails, we'll continue without a quarter
-                    pass
 
-        if not quarter:
-            # If we couldn't extract a quarter, return an error message
-            return f"""
+                    # Check if the quarter is in the future
+                    current_date = datetime.now()
+                    current_year = current_date.year
+                    current_quarter = ((current_date.month - 1) // 3) + 1
+
+                    # If the year is in the future, or it's the current year but a future quarter
+                    if year > current_year or (year == current_year and q_num > current_quarter):
+                        return f"""
 # Transcript Information for {title}
 
 ## Meeting Details
 - **Company**: {ticker}
 - **Date**: {date_str}
 - **Type**: {meeting_type}
+- **Quarter**: {year}Q{q_num}
 
-## Error: Could not determine quarter
-The Alpha Vantage EARNINGS_CALL_TRANSCRIPT API requires a quarter in YYYYQM format (e.g., 2024Q1).
-Could not extract quarter information from the meeting date or title.
-Please try again with a meeting that has a clear quarter reference in the title or a valid date.
+## Error: Future Quarter Requested
+The requested quarter (Q{q_num} {year}) is in the future. Earnings call transcripts are only available for past events.
+Please try a quarter that has already occurred.
 """
+
+                    quarter = f"{year}Q{q_num}"
+                except ValueError:
+                    # If date parsing fails, we'll continue without a quarter
+                    pass
+
+        # Check if quarter is directly provided in meeting_info
+        if not quarter and "quarter" in meeting_info:
+            quarter = meeting_info.get("quarter", "")
+
+        if not quarter:
+            # If we couldn't extract a quarter, use the most recent completed quarter
+            current_date = datetime.now()
+            current_year = current_date.year
+            current_month = current_date.month
+            # Calculate the most recent completed quarter
+            recent_quarter = ((current_month - 1) // 3)
+            if recent_quarter == 0:  # If we're in Q1, use Q4 of previous year
+                year = current_year - 1
+                q_num = 4
+            else:
+                year = current_year
+                q_num = recent_quarter
+
+            quarter = f"{year}Q{q_num}"
+            print(f"Could not determine quarter from meeting info. Using most recent completed quarter: {quarter}")
+
+        # Check if the quarter is in the future, regardless of how it was determined
+        if quarter and re.match(r'^\d{4}Q[1-4]$', quarter):
+            try:
+                year_str, q_part = quarter.split('Q')
+                year_int = int(year_str)
+                q_num_int = int(q_part)
+                current_year = datetime.now().year
+                current_quarter = ((datetime.now().month - 1) // 3) + 1
+
+                # If the year is in the future, or it's the current year but a future quarter
+                if year_int > current_year or (year_int == current_year and q_num_int > current_quarter):
+                    return f"""
+# Transcript Information for {title}
+
+## Meeting Details
+- **Company**: {ticker}
+- **Date**: {date_str}
+- **Type**: {meeting_type}
+- **Quarter**: {quarter}
+
+## Error: Future Quarter Requested
+The requested quarter ({quarter}) is in the future. Earnings call transcripts are only available for past events.
+Please try a quarter that has already occurred.
+"""
+            except (ValueError, IndexError):
+                # If parsing fails, we'll continue with the existing quarter
+                pass
 
         print(f"Retrieving transcript for {ticker} for {quarter}...")
 
@@ -463,15 +758,24 @@ Please try again with a meeting that has a clear quarter reference in the title 
             "apikey": api_key
         }
 
-        # Make the API request
-        response = requests.get(api_url, params=params)
+        # Construct the URL directly with the parameters
+        full_url = f"{api_url}?function=EARNINGS_CALL_TRANSCRIPT&symbol={ticker}&quarter={quarter}&apikey={api_key}"
+
+        # Make the API request with retry logic
+        success, response_data = make_api_request_with_retry(full_url, None)
 
         # Check if the request was successful
-        if response.status_code != 200:
-            return f"Error: Failed to retrieve transcript. Status code: {response.status_code}"
+        if not success:
+            return f"Error: Failed to retrieve transcript. {response_data}"
 
-        # Parse the JSON response
-        data = response.json()
+        # Parse the response data
+        if isinstance(response_data, dict):
+            data = response_data
+        else:
+            try:
+                data = json.loads(response_data) if isinstance(response_data, str) else {}
+            except json.JSONDecodeError:
+                return f"Error: Failed to parse transcript data. Invalid JSON response."
 
         # Check if we have valid data
         if not data or "transcript" not in data:
@@ -522,15 +826,178 @@ Please try a different meeting or check the company's investor relations website
         # If there's an error, return an error message
         return f"Error retrieving transcript: {str(e)}"
 
+def get_most_recent_transcript(company_name: str, ticker_symbol: Optional[str] = None) -> str:
+    """
+    Get the transcript for the most recent investor meeting for a company.
+
+    This function algorithmically determines the most recent completed quarter based on the current date,
+    and tries to retrieve the transcript for that quarter. If that doesn't work, it tries the previous quarter.
+    If the quarter is 0, it rolls back the year by 1 and makes the quarter 4.
+
+    Args:
+        company_name (str): The name of the company to search for (e.g., "Apple", "Microsoft", "Tesla").
+                           This is a required parameter.
+        ticker_symbol (Optional[str]): The ticker symbol for the company (e.g., "AAPL", "MSFT").
+                                     If provided, this will be used instead of trying to derive
+                                     a ticker from the company name. If None, will derive from company_name.
+
+    Returns:
+        str: The full text of the transcript for the most recent meeting, or an error message if no
+             meetings were found or the transcript could not be retrieved.
+
+    Examples:
+        # Get the most recent transcript for Apple
+        transcript = get_most_recent_transcript(company_name="Apple", ticker_symbol="AAPL")
+
+        # Get the most recent transcript for Microsoft using only the company name
+        transcript = get_most_recent_transcript(company_name="Microsoft")
+    """
+    try:
+        # Use the provided ticker_symbol if available, otherwise try to derive one from the company_name
+        if ticker_symbol:
+            ticker = ticker_symbol.strip().upper()
+        else:
+            # For simplicity, we'll assume the company name might be the ticker or close to it
+            # Just take the first word and uppercase it
+            ticker = company_name.split()[0].upper()
+
+        # Get the current date for reference
+        current_date = datetime.now()
+        current_year = current_date.year
+        current_month = current_date.month
+
+        # Determine the current quarter based on the month
+        # If month is in the first 3 months (1-3), it's quarter 1
+        # If month is in the second 3 months (4-6), it's quarter 2
+        # If month is in the third 3 months (7-9), it's quarter 3
+        # If month is in the fourth 3 months (10-12), it's quarter 4
+        current_quarter = ((current_month - 1) // 3) + 1
+
+        # Define a function to try getting a transcript for a specific quarter
+        def try_get_transcript_for_quarter(year, quarter):
+            quarter_str = f"{year}Q{quarter}"
+            print(f"Trying to get transcript for {company_name} ({ticker}) for {quarter_str}...")
+
+            # Get the Alpha Vantage API key
+            api_key = Config.get_alpha_vantage_api_key()
+            if not api_key:
+                return None
+
+            # Alpha Vantage API endpoint for earnings call transcripts
+            api_url = "https://www.alphavantage.co/query"
+
+            # Construct the URL directly with the parameters
+            full_url = f"{api_url}?function=EARNINGS_CALL_TRANSCRIPT&symbol={ticker}&quarter={quarter_str}&apikey={api_key}"
+
+            # Make the API request with retry logic
+            success, response_data = make_api_request_with_retry(full_url, None)
+
+            # Check if the request was successful
+            if not success:
+                print(f"Error: Failed to retrieve transcript. {response_data}")
+                return None
+
+            # Parse the response data
+            if isinstance(response_data, dict):
+                data = response_data
+            else:
+                try:
+                    data = json.loads(response_data) if isinstance(response_data, str) else {}
+                except json.JSONDecodeError:
+                    print(f"Error: Failed to parse transcript data. Invalid JSON response.")
+                    return None
+
+            # Check if we have valid data
+            if not data or "transcript" not in data:
+                print(f"No transcript found for {quarter_str}.")
+                return None
+
+            # Extract the transcript data
+            transcript_data = data["transcript"]
+
+            # Format the transcript text
+            transcript_text = f"""
+# Transcript for {company_name} Earnings Call - {quarter_str}
+
+## Meeting Details
+- **Company**: {ticker}
+- **Date**: {year}-{quarter*3-1:02d}-15
+- **Quarter**: {quarter_str}
+- **Type**: Earnings Call
+
+## Transcript
+"""
+
+            # Add each speaker's part to the transcript
+            for entry in transcript_data:
+                speaker = entry.get("speaker", "Unknown Speaker")
+                text = entry.get("text", "")
+                transcript_text += f"\n**{speaker}**: {text}\n"
+
+            return transcript_text
+
+        print(f"Attempting to retrieve the most recent transcript for {company_name}...")
+
+        # Try to get the transcript for the current quarter
+        year = current_year
+        quarter = current_quarter
+
+        # We'll keep trying quarters until we get a hit or reach a reasonable limit
+        # (e.g., going back 10 years or 40 quarters)
+        max_years_back = 10
+        min_year = current_year - max_years_back
+        attempted_quarters = []
+
+        # Keep trying quarters until we get a hit or reach the minimum year
+        while year >= min_year:
+            quarter_str = f"{year}Q{quarter}"
+            attempted_quarters.append(quarter_str)
+
+            transcript = try_get_transcript_for_quarter(year, quarter)
+            if transcript:
+                return transcript
+
+            print(f"No transcript found for {quarter_str}. Trying previous quarter...")
+
+            # Move to the previous quarter
+            quarter -= 1
+
+            # If the quarter is 0, roll back the year by 1 and make the quarter 4
+            if quarter == 0:
+                year -= 1
+                quarter = 4
+
+            # If we've tried too many quarters, break to avoid excessive API calls
+            if len(attempted_quarters) >= 40:  # 10 years worth of quarters
+                break
+
+        # If all attempts fail, return an error message
+        return f"""
+# No Transcript Found for {company_name}
+
+## Attempted Quarters
+{chr(10).join([f"- {q}" for q in attempted_quarters])}
+
+No transcript could be found for any of these quarters. This could be because:
+1. The transcripts are not available in the Alpha Vantage database
+2. The company might use a different ticker symbol in the Alpha Vantage database
+3. The company might not have had earnings calls in these quarters
+
+Please try a different company or check the company's investor relations website for transcripts.
+"""
+
+    except Exception as e:
+        # If there's an error, return an error message
+        return f"Error retrieving the most recent transcript for {company_name}: {str(e)}"
+
 def summarize_transcript(transcript_text: str) -> Dict[str, Any]:
     """
     Summarize the key information from a transcript.
 
-    This function prepares a structure for summarizing transcript text. It uses regex for 
-    basic meeting type detection and creates a template for the summary. The actual analysis
-    and extraction of key information is performed by the transcript_summarization_agent
-    using its LLM capabilities. The function is designed to be used as a tool by the agent,
-    which will populate the summary components with extracted information.
+    This function prepares a structure for summarizing transcript text. It provides the 
+    transcript text to the transcript_summarization_agent, which uses its LLM capabilities
+    to analyze and extract key information. The function is designed to be used as a tool 
+    by the agent, which will populate the summary components with extracted information.
 
     Args:
         transcript_text (str): The full text of the transcript, typically obtained from
@@ -566,8 +1033,9 @@ def summarize_transcript(transcript_text: str) -> Dict[str, Any]:
             # Or use the full summary
             print(summary['full_summary'])
     """
+    # Initialize the summary structure
     summary = {
-        "meeting_type": "",
+        "meeting_type": "Earnings Call",  # Default meeting type
         "financial_highlights": [],
         "strategic_initiatives": [],
         "outlook": [],
@@ -585,49 +1053,39 @@ def summarize_transcript(transcript_text: str) -> Dict[str, Any]:
         summary["full_summary"] = f"Error: {transcript_text}"
         return summary
 
-    # Use regex only to determine meeting type
-    if "earnings call" in transcript_text.lower() or "q1" in transcript_text.lower() or "q2" in transcript_text.lower() or "q3" in transcript_text.lower() or "q4" in transcript_text.lower():
-        summary["meeting_type"] = "Earnings Call"
-    elif "investor day" in transcript_text.lower():
-        summary["meeting_type"] = "Investor Day"
-    elif "annual meeting" in transcript_text.lower() or "shareholder meeting" in transcript_text.lower():
-        summary["meeting_type"] = "Annual Shareholder Meeting"
-    else:
-        summary["meeting_type"] = "Investor Meeting"
-
-    # Extract basic information from the transcript
-    # This function is designed to be used by the transcript_summarization_agent
-    # The agent will use its LLM capabilities to analyze the transcript and generate a summary
-
     # Truncate the transcript if it's too long (to avoid token limits)
     max_length = 30000  # Adjust based on model token limits
     truncated_transcript = transcript_text[:max_length] if len(transcript_text) > max_length else transcript_text
 
-    # Add placeholder content for the summary components
-    # These will be populated by the agent using its LLM capabilities
+    # Basic meeting type detection (can be refined by the LLM)
+    if "earnings call" in truncated_transcript.lower() or "q1" in truncated_transcript.lower() or "q2" in truncated_transcript.lower() or "q3" in truncated_transcript.lower() or "q4" in truncated_transcript.lower():
+        summary["meeting_type"] = "Earnings Call"
+    elif "investor day" in truncated_transcript.lower():
+        summary["meeting_type"] = "Investor Day"
+    elif "annual meeting" in truncated_transcript.lower() or "shareholder meeting" in truncated_transcript.lower():
+        summary["meeting_type"] = "Annual Shareholder Meeting"
+    else:
+        summary["meeting_type"] = "Investor Meeting"
+
+    # Provide placeholder content that will be replaced by the LLM's analysis
+    # The transcript_summarization_agent will use its LLM capabilities to analyze the transcript
+    # and replace these placeholders with actual extracted information
     summary["financial_highlights"] = ["Extracted from transcript by the agent"]
     summary["strategic_initiatives"] = ["Extracted from transcript by the agent"]
     summary["outlook"] = ["Extracted from transcript by the agent"]
     summary["key_quotes"] = ["Extracted from transcript by the agent"]
 
-    # Create a basic summary that includes the meeting type
+    # Create a basic summary template
     summary["full_summary"] = f"""
 Meeting Type: {summary["meeting_type"]}
 
-Financial Highlights:
-{"- " + "\n- ".join(summary["financial_highlights"]) if summary["financial_highlights"] else "No specific financial highlights extracted."}
+This transcript will be analyzed by the LLM to extract:
+1. Financial highlights and key metrics
+2. Strategic initiatives and business developments
+3. Future outlook and guidance
+4. Important quotes from executives
 
-Strategic Initiatives:
-{"- " + "\n- ".join(summary["strategic_initiatives"]) if summary["strategic_initiatives"] else "No specific strategic initiatives extracted."}
-
-Outlook:
-{"- " + "\n- ".join(summary["outlook"]) if summary["outlook"] else "No specific outlook information extracted."}
-
-Key Quotes:
-{"- " + "\n- ".join(summary["key_quotes"]) if summary["key_quotes"] else "No key quotes extracted."}
-
-Note: This summary was generated by analyzing the transcript text from Alpha Vantage.
-For complete and accurate information, please refer to the full transcript.
+The LLM will replace this placeholder with a comprehensive summary.
 """
 
     return summary

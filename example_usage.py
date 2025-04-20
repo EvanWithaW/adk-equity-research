@@ -33,7 +33,7 @@ JITTER_FACTOR = 0.1
 
 async def run_with_rate_limit(runner, user_id, session_id, new_message):
     """
-    Run the agent with rate limiting and retry logic for RESOURCE_EXHAUSTED errors.
+    Run the agent with rate limiting and retry logic for RESOURCE_EXHAUSTED errors and network errors.
 
     Args:
         runner: The runner instance
@@ -63,11 +63,12 @@ async def run_with_rate_limit(runner, user_id, session_id, new_message):
 
             # If we get here, the operation completed successfully
             break
-        except ClientError as e:
+        except (ClientError, Exception) as e:
             error_str = str(e)
+            error_type = type(e).__name__
 
             # Check if this is a RESOURCE_EXHAUSTED error
-            if "RESOURCE_EXHAUSTED" in error_str:
+            if isinstance(e, ClientError) and "RESOURCE_EXHAUSTED" in error_str:
                 # Check if we've reached the maximum number of retries
                 if retry_count >= MAX_RETRIES:
                     print(f"\n[System]: Rate limit exceeded after {MAX_RETRIES} retries. Please try again later.")
@@ -95,11 +96,28 @@ async def run_with_rate_limit(runner, user_id, session_id, new_message):
                 # Increase delay for next retry using exponential backoff
                 delay *= BACKOFF_FACTOR
                 retry_count += 1
+                continue
+            # Check for network-related errors that should be retried
+            elif "httpcore.ReadError" in error_str or "ReadError" in error_type or "ConnectionError" in error_type or "Timeout" in error_type:
+                # Check if we've reached the maximum number of retries
+                if retry_count >= MAX_RETRIES:
+                    print(f"\n[System]: Network error persisted after {MAX_RETRIES} retries. Please check your connection and try again later.")
+                    raise
 
-                # Continue to the next iteration of the loop to retry
+                # Calculate delay with jitter
+                actual_delay = delay * (1 + random.random() * JITTER_FACTOR)
+
+                print(f"\n[System]: Network error detected: {error_type}. Waiting {actual_delay:.1f} seconds before retrying (attempt {retry_count + 1}/{MAX_RETRIES})...")
+
+                # Wait before retrying
+                await asyncio.sleep(actual_delay)
+
+                # Increase delay for next retry using exponential backoff
+                delay *= BACKOFF_FACTOR
+                retry_count += 1
                 continue
             else:
-                # For other types of ClientError, re-raise
+                # For other types of errors, re-raise
                 raise
 
 # Load environment variables from .env file
@@ -340,9 +358,6 @@ async def run_example():
                 else:
                     # Re-raise other ClientErrors to be handled by the outer try-except block
                     raise
-
-            # Variable to store the agent's response text
-            agent_response_text = ""
 
             # Add a newline after the agent's response
             if not response_started:

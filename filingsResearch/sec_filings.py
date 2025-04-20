@@ -22,6 +22,8 @@ import random
 from typing import List, Dict, Any, Optional, Callable
 import json
 
+from filingsResearch.config import Config
+
 # Filter the XMLParsedAsHTMLWarning
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
@@ -126,7 +128,7 @@ def get_company_info(cik: str) -> Dict[str, Any]:
 
     # Set the header as required by SEC
     headers = {
-        'User-Agent': 'Educational Project Evan Weidner hi@evanweidner.com'
+        'User-Agent': Config.get_sec_user_agent()
     }
 
     # Make the GET request with retry logic
@@ -190,7 +192,7 @@ def find_filings(cik: str, filing_type: Optional[str], count: int) -> List[Dict[
 
     # Set the header as required by SEC
     headers = {
-        'User-Agent': 'Educational Project Evan Weidner hi@evanweidner.com'
+        'User-Agent': Config.get_sec_user_agent()
     }
 
     try:
@@ -424,7 +426,7 @@ def extract_filing_text(filing_url: str) -> str:
     """
     # Set the header as required by SEC
     headers = {
-        'User-Agent': 'Educational Project Evan Weidner hi@evanweidner.com'
+        'User-Agent': Config.get_sec_user_agent()
     }
 
     try:

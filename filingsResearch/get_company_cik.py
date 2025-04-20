@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import re
+from filingsResearch.config import Config
 
 def find_cik(company_name: str) -> list:
     """
@@ -15,9 +16,9 @@ def find_cik(company_name: str) -> list:
     # URL for the SEC's CIK lookup tool
     url = "https://www.sec.gov/cgi-bin/cik_lookup"
 
-    # Set the header as specified
+    # Set the header as required by SEC
     headers = {
-        'User-Agent': 'Educational Project Evan Weidner hi@evanweidner.com'
+        'User-Agent': Config.get_sec_user_agent()
     }
 
     # Prepare the form data
