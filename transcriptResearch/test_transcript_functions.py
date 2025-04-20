@@ -27,7 +27,7 @@ def test_search_investor_meetings():
 
     # Test with a valid company name (recent meetings)
     print("\nTesting with 'Apple' (recent meetings):")
-    meetings = search_investor_meetings("Apple")
+    meetings = search_investor_meetings(company_name="Apple", ticker_symbol=None, count=5, specific_date=None, reference=None)
     print(f"Found {len(meetings)} meetings")
     for i, meeting in enumerate(meetings[:2]):  # Show first 2 meetings
         print(f"\nMeeting {i+1}:")
@@ -44,7 +44,7 @@ def test_search_investor_meetings():
 
     # Test with another company
     print("\nTesting with 'Microsoft' (recent meetings):")
-    meetings = search_investor_meetings("Microsoft")
+    meetings = search_investor_meetings(company_name="Microsoft", ticker_symbol=None, count=5, specific_date=None, reference=None)
     print(f"Found {len(meetings)} meetings")
     for i, meeting in enumerate(meetings[:2]):  # Show first 2 meetings
         print(f"\nMeeting {i+1}:")
@@ -57,7 +57,7 @@ def test_search_investor_meetings():
     # Test with specific_date parameter
     if first_meeting_date:
         print(f"\nTesting with 'Apple' and specific date '{first_meeting_date}':")
-        date_meetings = search_investor_meetings("Apple", specific_date=first_meeting_date)
+        date_meetings = search_investor_meetings(company_name="Apple", ticker_symbol=None, count=5, specific_date=first_meeting_date, reference=None)
         print(f"Found {len(date_meetings)} meetings")
         for i, meeting in enumerate(date_meetings[:2]):  # Show first 2 meetings
             print(f"\nMeeting {i+1}:")
@@ -69,7 +69,7 @@ def test_search_investor_meetings():
 
     # Test with reference parameter
     print("\nTesting with 'Apple' and reference 'Q1 2023':")
-    reference_meetings = search_investor_meetings("Apple", reference="Q1 2023")
+    reference_meetings = search_investor_meetings(company_name="Apple", ticker_symbol=None, count=5, specific_date=None, reference="Q1 2023")
     print(f"Found {len(reference_meetings)} meetings")
     for i, meeting in enumerate(reference_meetings[:2]):  # Show first 2 meetings
         print(f"\nMeeting {i+1}:")
@@ -85,7 +85,7 @@ def test_get_transcript_text():
 
     # First, get some meeting info from the search function
     print("\nSearching for Apple meetings...")
-    apple_meetings = search_investor_meetings("Apple", 2)
+    apple_meetings = search_investor_meetings(company_name="Apple", ticker_symbol=None, count=2, specific_date=None, reference=None)
 
     if apple_meetings and len(apple_meetings) > 0:
         # Test with a valid meeting info from the search results

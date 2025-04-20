@@ -19,7 +19,7 @@ import re
 # Import configuration
 from filingsResearch.config import Config
 
-def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = None, count: int = 5, specific_date: Optional[str] = None, reference: Optional[str] = None) -> List[Dict[str, Any]]:
+def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = None, count: Optional[int] = None, specific_date: Optional[str] = None, reference: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Search for investor meetings for a given company using the Alpha Vantage API.
     Can search for recent meetings or specific meetings referenced by other sub-agents.
@@ -33,15 +33,15 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
     Args:
         company_name (str): The name of the company to search for (e.g., "Apple", "Microsoft", "Tesla").
                            This is a required parameter.
-        ticker_symbol (Optional[str], optional): The ticker symbol for the company (e.g., "AAPL", "MSFT").
-                                               If provided, this will be used instead of trying to derive
-                                               a ticker from the company name. Defaults to None.
-        count (int, optional): The number of results to return. Defaults to 5.
-        specific_date (Optional[str], optional): A specific date to search for in format YYYY-MM-DD 
-                                               (e.g., "2023-05-04"). Defaults to None.
-        reference (Optional[str], optional): A reference to a specific meeting mentioned elsewhere.
-                                           Can be a quarter (e.g., "Q1 2023", "first quarter 2023") 
-                                           or a month (e.g., "January 2023"). Defaults to None.
+        ticker_symbol (Optional[str]): The ticker symbol for the company (e.g., "AAPL", "MSFT").
+                                     If provided, this will be used instead of trying to derive
+                                     a ticker from the company name. If None, will derive from company_name.
+        count (int): The number of results to return. If None, defaults to 5.
+        specific_date (Optional[str]): A specific date to search for in format YYYY-MM-DD 
+                                     (e.g., "2023-05-04"). If None, no date filtering is applied.
+        reference (Optional[str]): A reference to a specific meeting mentioned elsewhere.
+                                 Can be a quarter (e.g., "Q1 2023", "first quarter 2023") 
+                                 or a month (e.g., "January 2023"). If None, no reference filtering is applied.
 
     Returns:
         List[Dict[str, Any]]: A list of dictionaries containing information about investor meetings.
@@ -56,17 +56,21 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
 
     Examples:
         # Search for recent investor meetings for Apple using company name only
-        meetings = search_investor_meetings(company_name="Apple")
+        meetings = search_investor_meetings(company_name="Apple", ticker_symbol=None, count=20, specific_date=None, reference=None)
 
         # Search for Microsoft investor meetings using ticker symbol
-        meetings = search_investor_meetings(company_name="Microsoft", ticker_symbol="MSFT", count=3)
+        meetings = search_investor_meetings(company_name="Microsoft", ticker_symbol="MSFT", count=3, specific_date=None, reference=None)
 
         # Search for a specific Tesla earnings call from Q1 2023
-        meetings = search_investor_meetings(company_name="Tesla", ticker_symbol="TSLA", reference="Q1 2023")
+        meetings = search_investor_meetings(company_name="Tesla", ticker_symbol="TSLA", count=20, specific_date=None, reference="Q1 2023")
 
         # Search for a specific Apple earnings call on May 4, 2023
-        meetings = search_investor_meetings(company_name="Apple", ticker_symbol="AAPL", specific_date="2023-05-04")
+        meetings = search_investor_meetings(company_name="Apple", ticker_symbol="AAPL", count=20, specific_date="2023-05-04", reference=None)
     """
+    # Set default values for parameters if they are None
+    if count is None:
+        count = 20  # Increased from 5 to ensure we get all relevant/recent meetings
+
     # Use the provided ticker_symbol if available, otherwise try to derive one from the company_name
     if ticker_symbol:
         ticker = ticker_symbol.strip().upper()
@@ -308,7 +312,7 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
                 "title": f"{ticker} Earnings Call - {formatted_date}",
                 "date": formatted_date,
                 "type": "Earnings Call",
-                "url": f"https://www.alphavantage.co/earnings/{ticker}/{formatted_date}",
+                "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={ticker}&apikey={api_key}",
                 "source": "Alpha Vantage",
                 "ticker": ticker
             }
@@ -322,7 +326,7 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
                 "title": f"No recent investor meetings found for {company_name}",
                 "date": datetime.now().strftime("%Y-%m-%d"),
                 "type": "Information",
-                "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}",
+                "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}&apikey={api_key}",
                 "source": "Alpha Vantage",
                 "message": f"No recent investor meetings were found for {company_name} using the Alpha Vantage API."
             }]
@@ -336,7 +340,7 @@ def search_investor_meetings(company_name: str, ticker_symbol: Optional[str] = N
             "title": f"Error finding meetings for {company_name}",
             "date": datetime.now().strftime("%Y-%m-%d"),
             "type": "Error",
-            "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}",
+            "url": f"https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&symbol={ticker}&apikey={api_key}",
             "source": "Alpha Vantage",
             "error": str(e),
             "message": f"An error occurred while searching for investor meetings: {str(e)}"
@@ -363,7 +367,7 @@ def get_transcript_text(meeting_info: Dict[str, Any]) -> str:
 
     Examples:
         # First, search for meetings
-        meetings = search_investor_meetings(company_name="Apple")
+        meetings = search_investor_meetings(company_name="Apple", ticker_symbol=None, count=5, specific_date=None, reference=None)
 
         # Then, get the transcript information for the first meeting
         if meetings and len(meetings) > 0:
@@ -383,8 +387,16 @@ def get_transcript_text(meeting_info: Dict[str, Any]) -> str:
         ticker = meeting_info.get("ticker", "")
         if not ticker and "url" in meeting_info:
             # Try to extract ticker from URL
-            url_parts = meeting_info["url"].split("/")
-            if len(url_parts) > 4:
+            url = meeting_info["url"]
+            # Check if the URL is in the format with query parameters
+            if "?" in url and "symbol=" in url:
+                # Extract the ticker from the symbol parameter
+                symbol_part = url.split("symbol=")[1]
+                # The ticker is everything up to the next & or the end of the string
+                ticker = symbol_part.split("&")[0]
+            # Also try the old format where ticker is part of the path
+            elif len(url.split("/")) > 4:
+                url_parts = url.split("/")
                 ticker = url_parts[4]
 
         if not ticker:
@@ -514,12 +526,11 @@ def summarize_transcript(transcript_text: str) -> Dict[str, Any]:
     """
     Summarize the key information from a transcript.
 
-    This function analyzes the transcript text to extract key financial highlights,
-    strategic initiatives, future outlook, and important quotes. It primarily uses
-    an LLM (Google's Gemini model) to generate the summary, with minimal regex for 
-    error handling and meeting type detection. The function processes the transcript
-    to identify the type of meeting, extract key financial metrics, highlight strategic
-    initiatives, capture management's outlook, and identify important quotes from executives.
+    This function prepares a structure for summarizing transcript text. It uses regex for 
+    basic meeting type detection and creates a template for the summary. The actual analysis
+    and extraction of key information is performed by the transcript_summarization_agent
+    using its LLM capabilities. The function is designed to be used as a tool by the agent,
+    which will populate the summary components with extracted information.
 
     Args:
         transcript_text (str): The full text of the transcript, typically obtained from
@@ -537,7 +548,7 @@ def summarize_transcript(transcript_text: str) -> Dict[str, Any]:
 
     Examples:
         # First, search for meetings
-        meetings = search_investor_meetings(company_name="Apple")
+        meetings = search_investor_meetings(company_name="Apple", ticker_symbol=None, count=5, specific_date=None, reference=None)
 
         # Then, get the transcript for the first meeting
         if meetings and len(meetings) > 0:
@@ -565,7 +576,7 @@ def summarize_transcript(transcript_text: str) -> Dict[str, Any]:
     }
 
     # Check if we have an error message instead of a transcript
-    if transcript_text.startswith("Error retrieving transcript:") or transcript_text.startswith("No transcript content found"):
+    if transcript_text.startswith("Error") or "Error:" in transcript_text or "## Error:" in transcript_text or transcript_text.startswith("No transcript content found"):
         summary["meeting_type"] = "Error"
         summary["financial_highlights"].append("Unable to retrieve transcript content.")
         summary["strategic_initiatives"].append("Unable to retrieve transcript content.")
@@ -584,101 +595,23 @@ def summarize_transcript(transcript_text: str) -> Dict[str, Any]:
     else:
         summary["meeting_type"] = "Investor Meeting"
 
-    # Use LLM to generate the summary
-    try:
-        # Import the necessary modules
-        from google.adk.models.llm import Llm
-        from google.adk.models.llm_factory import LlmFactory
+    # Extract basic information from the transcript
+    # This function is designed to be used by the transcript_summarization_agent
+    # The agent will use its LLM capabilities to analyze the transcript and generate a summary
 
-        # Create an LLM instance
-        llm = LlmFactory.create_llm(model="gemini-2.0-flash")
+    # Truncate the transcript if it's too long (to avoid token limits)
+    max_length = 30000  # Adjust based on model token limits
+    truncated_transcript = transcript_text[:max_length] if len(transcript_text) > max_length else transcript_text
 
-        # Truncate the transcript if it's too long (to avoid token limits)
-        max_length = 30000  # Adjust based on model token limits
-        truncated_transcript = transcript_text[:max_length] if len(transcript_text) > max_length else transcript_text
+    # Add placeholder content for the summary components
+    # These will be populated by the agent using its LLM capabilities
+    summary["financial_highlights"] = ["Extracted from transcript by the agent"]
+    summary["strategic_initiatives"] = ["Extracted from transcript by the agent"]
+    summary["outlook"] = ["Extracted from transcript by the agent"]
+    summary["key_quotes"] = ["Extracted from transcript by the agent"]
 
-        # Create prompts for each section of the summary
-        financial_prompt = f"""
-        Analyze the following transcript and extract the key financial highlights.
-        Focus on information about revenue, growth, margins, profit, earnings, EPS, and other financial metrics.
-        Format your response as a list of bullet points, with each point being a concise statement about a financial highlight.
-
-        Transcript:
-        {truncated_transcript}
-        """
-
-        strategic_prompt = f"""
-        Analyze the following transcript and extract the key strategic initiatives mentioned.
-        Focus on information about strategy, initiatives, investments, expansions, acquisitions, innovations, developments, launches, and partnerships.
-        Format your response as a list of bullet points, with each point being a concise statement about a strategic initiative.
-
-        Transcript:
-        {truncated_transcript}
-        """
-
-        outlook_prompt = f"""
-        Analyze the following transcript and extract information about the company's future outlook.
-        Focus on information about guidance, outlook, forecasts, future plans, and expectations.
-        Format your response as a list of bullet points, with each point being a concise statement about the company's outlook.
-
-        Transcript:
-        {truncated_transcript}
-        """
-
-        quotes_prompt = f"""
-        Analyze the following transcript and extract important quotes from executives.
-        Focus on statements from the CEO, CFO, President, Chairman, and other key executives.
-        Format your response as a list of bullet points, with each point being a direct quote attributed to the speaker.
-
-        Transcript:
-        {truncated_transcript}
-        """
-
-        # Generate summaries for each section
-        financial_response = llm.generate_content(financial_prompt)
-        strategic_response = llm.generate_content(strategic_prompt)
-        outlook_response = llm.generate_content(outlook_prompt)
-        quotes_response = llm.generate_content(quotes_prompt)
-
-        # Process the responses
-        financial_text = financial_response.text if hasattr(financial_response, 'text') else str(financial_response)
-        strategic_text = strategic_response.text if hasattr(strategic_response, 'text') else str(strategic_response)
-        outlook_text = outlook_response.text if hasattr(outlook_response, 'text') else str(outlook_response)
-        quotes_text = quotes_response.text if hasattr(quotes_response, 'text') else str(quotes_response)
-
-        # Convert bullet points to list items
-        summary["financial_highlights"] = [line.strip().lstrip('•-*').strip() for line in financial_text.split('\n') if line.strip() and not line.strip().startswith('#')]
-        summary["strategic_initiatives"] = [line.strip().lstrip('•-*').strip() for line in strategic_text.split('\n') if line.strip() and not line.strip().startswith('#')]
-        summary["outlook"] = [line.strip().lstrip('•-*').strip() for line in outlook_text.split('\n') if line.strip() and not line.strip().startswith('#')]
-        summary["key_quotes"] = [line.strip().lstrip('•-*').strip() for line in quotes_text.split('\n') if line.strip() and not line.strip().startswith('#')]
-
-        # Filter out empty items
-        summary["financial_highlights"] = [item for item in summary["financial_highlights"] if item]
-        summary["strategic_initiatives"] = [item for item in summary["strategic_initiatives"] if item]
-        summary["outlook"] = [item for item in summary["outlook"] if item]
-        summary["key_quotes"] = [item for item in summary["key_quotes"] if item]
-
-        # Generate full summary
-        full_summary_prompt = f"""
-        Create a comprehensive summary of the following transcript of a {summary["meeting_type"]}.
-        Include key financial highlights, strategic initiatives, future outlook, and important quotes.
-        Format your response in a clear, organized manner with sections for each category.
-
-        Transcript:
-        {truncated_transcript}
-        """
-
-        full_summary_response = llm.generate_content(full_summary_prompt)
-        full_summary_text = full_summary_response.text if hasattr(full_summary_response, 'text') else str(full_summary_response)
-
-        summary["full_summary"] = full_summary_text
-
-    except Exception as e:
-        # Fallback to a simple summary if LLM fails
-        print(f"Error using LLM for summarization: {str(e)}")
-
-        # Generate a basic summary from the extracted information
-        summary["full_summary"] = f"""
+    # Create a basic summary that includes the meeting type
+    summary["full_summary"] = f"""
 Meeting Type: {summary["meeting_type"]}
 
 Financial Highlights:

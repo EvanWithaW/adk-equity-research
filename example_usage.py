@@ -44,17 +44,23 @@ async def run_with_rate_limit(runner, user_id, session_id, new_message):
     Yields:
         Events from the runner
     """
+    # Reset these variables for each call to ensure rate limit handler resets properly
     retry_count = 0
     delay = INITIAL_DELAY
 
     while True:
         try:
-            async for event in runner.run_async(
+            # Create a fresh run_async generator for each attempt
+            run_generator = runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
                 new_message=new_message
-            ):
+            )
+
+            # Process events from the generator
+            async for event in run_generator:
                 yield event
+
             # If we get here, the operation completed successfully
             break
         except ClientError as e:
@@ -89,6 +95,9 @@ async def run_with_rate_limit(runner, user_id, session_id, new_message):
                 # Increase delay for next retry using exponential backoff
                 delay *= BACKOFF_FACTOR
                 retry_count += 1
+
+                # Continue to the next iteration of the loop to retry
+                continue
             else:
                 # For other types of ClientError, re-raise
                 raise
@@ -351,9 +360,13 @@ async def run_example():
                 "will transfer control back to the investment_recommendation_agent",
                 "transferring control back to the investment_recommendation_agent",
                 "i will transfer control back to the investment_recommendation_agent",
+                "i am now transferring control back to the investment_recommendation_agent",
                 "transfer control to the investment_recommendation_agent",
                 "returning control to the investment_recommendation_agent",
-                "handing control back to the investment_recommendation_agent"
+                "handing control back to the investment_recommendation_agent",
+                "now transferring control back to the investment_recommendation_agent",
+                "transferring back to the investment_recommendation_agent",
+                "transfer back to the investment_recommendation_agent"
             ]
 
             if any(phrase in agent_response_text.lower() for phrase in transfer_phrases):

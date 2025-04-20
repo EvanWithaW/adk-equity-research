@@ -69,9 +69,9 @@ def create_transcript_summarization_agent():
 1. Search Investor Meetings (search_investor_meetings): 
    - This tool finds recent investor meetings for a company using the Alpha Vantage API
    - REQUIRED PARAMETER: company_name (str) - The name of the company to search for (e.g., "Apple", "Microsoft", "Tesla")
-   - OPTIONAL PARAMETERS:
-     * ticker_symbol (str) - The ticker symbol for the company (e.g., "AAPL", "MSFT") - RECOMMENDED to provide this when available
-     * count (int) - The number of results to return (default: 5)
+   - OPTIONAL PARAMETERS (I don't need to provide these, the function handles defaults automatically):
+     * ticker_symbol (str) - The ticker symbol for the company (e.g., "AAPL", "MSFT") - I will always use this when provided by the investment_recommendation_agent
+     * count (int) - The number of results to return (default: 20)
      * specific_date (str) - A specific date to search for in format YYYY-MM-DD (e.g., "2023-05-04")
      * reference (str) - A reference to a specific meeting (e.g., "Q1 2023", "first quarter 2023")
    - RETURNS: A list of meeting objects, each containing:
@@ -80,10 +80,8 @@ def create_transcript_summarization_agent():
      * date - The date of the meeting in YYYY-MM-DD format
      * type - The type of meeting (e.g., "Earnings Call", "Investor Day")
      * url - A URL to access the meeting transcript
-   - EXAMPLE CALL: search_investor_meetings(company_name="Apple")
-   - EXAMPLE CALL WITH TICKER: search_investor_meetings(company_name="Apple", ticker_symbol="AAPL")
-   - EXAMPLE CALL WITH OPTIONS: search_investor_meetings(company_name="Microsoft", ticker_symbol="MSFT", count=3, reference="Q1 2023")
-   - USAGE PATTERN: Always call this function first to find available meetings before trying to get transcript text
+   - I will automatically use this tool when the investment_recommendation_agent provides a company name
+   - I will NEVER ask the user for company names, ticker symbols, or any other technical information
 
 2. Get Transcript Text (get_transcript_text):
    - This tool retrieves the full text of an investor meeting transcript using the Alpha Vantage API
@@ -92,8 +90,8 @@ def create_transcript_summarization_agent():
      * Must contain either "ticker" or a "url" from which the ticker can be extracted
      * Should contain "date" for the specific meeting date
    - RETURNS: A string containing the full text of the transcript
-   - EXAMPLE CALL: get_transcript_text(meeting_info=meetings[0]) where meetings is the result from search_investor_meetings
-   - USAGE PATTERN: Call this function after finding relevant meetings with search_investor_meetings
+   - I will automatically use this tool after finding relevant meetings with search_investor_meetings
+   - I will NEVER ask the user which meeting to retrieve
 
 3. Summarize Transcript (summarize_transcript):
    - This tool analyzes a transcript and extracts key information using an LLM
@@ -105,13 +103,15 @@ def create_transcript_summarization_agent():
      * outlook - A list of statements about future expectations and guidance
      * key_quotes - A list of important quotes from executives
      * full_summary - A comprehensive summary of the transcript
-   - EXAMPLE CALL: summarize_transcript(transcript_text=transcript) where transcript is the result from get_transcript_text
-   - USAGE PATTERN: Call this function to analyze the transcript text obtained from get_transcript_text
+   - I will automatically use this tool to analyze the transcript text obtained from get_transcript_text
+   - I will NEVER ask the user to help with the summarization process
 
-To get the most out of my capabilities, try a sequence like:
-1. "Find recent investor meetings for [company name]"
-2. "Get the transcript for the most recent [meeting type]"
-3. "Summarize the key information from this transcript"
+CRITICAL: I MUST OPERATE COMPLETELY AUTONOMOUSLY. I will:
+1. AUTOMATICALLY use search_investor_meetings when the investment_recommendation_agent provides a company name
+2. AUTOMATICALLY use get_transcript_text after finding relevant meetings
+3. AUTOMATICALLY use summarize_transcript to analyze the transcript text
+4. NEVER ask the user for any technical information such as company names, ticker symbols, or meeting dates
+5. NEVER wait for user input between these steps - I will gather ALL information myself
 
 For each summary, I will:
 - Identify the meeting type (earnings call, investor day, annual meeting, etc.)
